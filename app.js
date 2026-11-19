@@ -114,6 +114,14 @@ function statusTxt(x) {
   return m;
 }
 
+function legendaSemana() {
+  return h('div', { class: 'legenda', 'aria-label': 'Legenda' },
+    h('span', {}, h('i', { class: 'leg-folga' }), 'Folga'),
+    h('span', {}, h('i', { class: 'leg-trab' }), 'Trabalho'),
+    h('span', {}, h('i', { class: 'leg-hoje' }), 'Hoje'),
+    h('span', {}, h('i', { class: 'leg-fer' }), 'Feriado (nome em laranja)'));
+}
+
 async function painelFuncionario() {
   let p;
   try { p = await api('/api/funcionario/painel'); } catch (e) { return; }
@@ -126,7 +134,7 @@ async function painelFuncionario() {
   app.replaceChildren(h('div', { class: 'card' },
     h('h2', {}, p.icone + ' ' + p.nome + ' • ' + p.funcaoNome), abas,
     h('p', {}, 'Suas folgas: ', h('b', { class: 'neon-sm' }, parTxt(sem.par)), ' ', sem.ajustada ? h('span', { class: 'badge warn' }, 'escala ajustada') : null),
-    semanaVisual(sem.dias),
+    semanaVisual(sem.dias), legendaSemana(),
     sem.meuPedido ? h('div', { class: 'msg' }, 'Seu pedido urgente (' + parTxt(sem.meuPedido.novo) + '): ' + statusTxt(sem.meuPedido),
       emAnalise ? h('div', { class: 'acoes' }, h('button', { class: 'pq perigo', onclick: cancelar }, 'Cancelar pedido')) : null) : null,
     !sem.podePedir && sem.motivoBloqueio ? h('div', { class: 'msg' }, sem.motivoBloqueio) : null,
