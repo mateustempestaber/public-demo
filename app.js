@@ -88,7 +88,6 @@ function telaEntrada() {
     finally { botao.disabled = false; }
   };
   app.replaceChildren(h('div', { class: 'entra' },
-    h('div', { class: 'fundo3d', 'aria-hidden': 'true' }, ['bola b1', 'bola b2', 'bola b3', 'bola b4', 'bola b5', 'bola b6', 'anel', 'cubo'].map(c => h('span', { class: c }))),
     h('img', { class: 'entra-logo', src: 'logo.png', alt: 'Quintal do Carmo — Restaurante e Choperia' }),
     h('form', { class: 'entra-card', novalidate: 'novalidate', onsubmit: entrar }, nome, cpf, msg, botao)));
   nome.focus();
