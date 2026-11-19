@@ -57,6 +57,9 @@ Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou
 
 - **Funcionário:** ver a escala do **mês** (mês atual e o próximo; depois da próxima semana é previsão); pedir uma mudança **urgente** de folga (dias que a lei não deixa aparecem apagados, com o motivo); **trocar** ou **cancelar** o pedido enquanto o gestor não decide.
 - **Gestor:** ver a escala de todas as semanas do mês (as de previsão são só consulta); validar ou recusar pedidos; quando a troca deixaria falta de gente ("furo"), conferir a sugestão de quem pode cobrir — **ninguém muda de folga sem o gestor aprovar**.
+- **Gestor → Horas e banco:** lançar o ponto (entrada, saída, intervalo) tocando no dia; escolher se o tempo a mais vai para o **banco de horas** ou é pago como **hora extra** (50%; folga/feriado 100%); conferir os alertas da CLT (mais de 2h extras, intervalo curto, menos de 11h entre jornadas) e pagar saldo do banco.
+- **Gestor → Equipe → editar horário:** o sistema recusa jornada acima do limite da EC 141 (8h24 por dia na transição; 42h na semana a partir de 16/12/2026).
+- **Funcionário → Minhas horas:** horas da semana, extras e saldo do banco de horas.
 - **Gestor → Escala → Alterar:** trocar as folgas de alguém (2 dias quaisquer). O sistema deve **recusar** o que quebra o descanso semanal (mais de 6 dias seguidos) ou a folga de domingo.
 - **Gestor → Equipe:** cadastrar alguém com um CPF de teste válido (ex.: gere um em um gerador de CPF para testes) e ver se ele entra na escala.
 

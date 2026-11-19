@@ -144,6 +144,26 @@ function calendarioMes(cal, mes) {
     }));
 }
 
+function cartaoMinhasHoras(hs) {
+  const hm = m => { const s = m < 0 ? '-' : ''; m = Math.abs(m); return s + Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
+  const t = hs.totais, b = hs.banco;
+  return h('div', { class: 'card' }, h('h2', {}, 'Minhas horas'),
+    h('p', { class: 'sutil pequeno' }, 'Seu horário: ' + hs.horario + '.'),
+    h('div', { class: 'resumo-horas' },
+      h('div', {}, h('small', {}, 'Esta semana'), h('b', {}, hm(t.realizado)), h('small', {}, 'de ' + hm(t.previsto) + ' previstas')),
+      h('div', {}, h('small', {}, 'Hora extra'), h('b', {}, hm(t.extra50 + t.extra100)), h('small', {}, t.extra100 ? hm(t.extra100) + ' em folga/feriado' : 'nesta semana')),
+      h('div', {}, h('small', {}, 'Banco de horas'), h('b', { class: b.saldo > 0 ? 'hmais' : b.saldo < 0 ? 'hmenos' : '' }, (b.saldo > 0 ? '+' : '') + hm(b.saldo)),
+        h('small', {}, b.vencido ? hm(b.vencido) + ' vencidas (a pagar)' : b.proxVence ? 'vence a partir de ' + dataBR(b.proxVence) + '/' + b.proxVence.slice(0, 4) : 'sem saldo'))),
+    h('div', { class: 'tabela-rolagem' }, h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Dia'), h('th', {}, 'Previsto'), h('th', {}, 'Trabalhado'), h('th', {}, 'Diferença'))),
+      h('tbody', {}, hs.dias.map(d => h('tr', {},
+        h('td', {}, DIAS[d.dia] + ' ' + dataBR(d.data)),
+        h('td', {}, d.folga ? 'folga' : hm(d.previsto)),
+        h('td', {}, d.lancado ? hm(d.realizado) : h('span', { class: 'sutil' }, d.futuro || d.folga ? '' : 'não lançado')),
+        h('td', { class: d.diff > 0 ? 'hmais' : d.diff < 0 ? 'hmenos' : '' }, d.lancado && d.diff ? (d.diff > 0 ? '+' : '') + hm(d.diff) + (d.diff > 0 ? (d.destino === 'extra' ? ' (extra)' : ' (banco)') : ' (banco)') : '')))))),
+    h('p', { class: 'sutil pequeno' }, 'Quem lança o ponto é o gestor. Se algo estiver errado, fale com ele.'));
+}
+
 async function painelFuncionario() {
   let p;
   try { p = await api('/api/funcionario/painel'); } catch (e) { return; }
@@ -176,6 +196,7 @@ async function painelFuncionario() {
       h('h2', {}, p.icone + ' ' + p.nome + ' • ' + p.funcaoNome),
       navMes, calendarioMes(p.calendario, mes), legendaSemana(),
       h('p', { class: 'sutil pequeno' }, 'Depois da próxima semana a escala é uma previsão e ainda pode mudar.')),
+    p.horas ? cartaoMinhasHoras(p.horas) : null,
     h('div', { class: 'card' },
       h('h2', {}, 'Mudar uma folga'),
       h('p', { class: 'sutil pequeno' }, 'Dá para pedir mudança urgente na semana atual e na próxima. O gestor valida ou recusa.'),
@@ -260,8 +281,9 @@ async function painelGestor() {
   semanaGestor = g.semana;
   const eu = await api('/api/eu').catch(() => ({ nome: 'Gestor' }));
   barraUsuario(eu.nome || 'Gestor', 'gestor');
-  const abas = [['painel', 'Pedidos' + (g.pendentes ? ' (' + g.pendentes + ')' : '')], ['escala', 'Escala'], ['equipe', 'Equipe'], ['cobertura', 'Cobertura mínima'], ['regras', 'Regras e sindicato'], ['audit', 'Auditoria'], ['log', 'Registro']];
+  const abas = [['painel', 'Pedidos' + (g.pendentes ? ' (' + g.pendentes + ')' : '')], ['escala', 'Escala'], ['horas', 'Horas e banco'], ['equipe', 'Equipe'], ['cobertura', 'Cobertura mínima'], ['regras', 'Regras e sindicato'], ['audit', 'Auditoria'], ['log', 'Registro']];
   const nav = h('div', { class: 'abas' }, abas.map(([k, t]) => h('button', { class: abaGestor === k ? 'ativa' : '', onclick: () => { abaGestor = k; painelGestor(); } }, t)));
+  if (abaGestor === 'horas') { app.replaceChildren(nav, h('div', { class: 'card' }, h('p', { class: 'sutil' }, 'Carregando horas...'))); return gHoras(nav); }
   app.replaceChildren(nav, { painel: gPedidos, escala: gEscala, equipe: gEquipe, cobertura: gCobertura, regras: gRegras, audit: gAudit, log: gLog }[abaGestor](g));
 }
 
@@ -350,7 +372,7 @@ function gEscala(g) {
     if (!membros.length) return;
     linhas.push(h('tr', {}, h('td', { colspan: '9', class: 'neon-sm' }, g.funcoesInfo[f].icone + ' ' + g.funcoesInfo[f].plural)));
     membros.forEach(x => linhas.push(h('tr', {}, h('td', {}, x.nome),
-      DIAS.map((_, d) => { const off = x.par[0] === d || x.par[1] === d; return h('td', { class: (off ? 'f' : '') + (x.alterada ? ' alt' : '') }, off ? 'folga' : '•'); }),
+      DIAS.map((_, d) => { const off = x.par[0] === d || x.par[1] === d; return h('td', { class: (off ? 'f' : 'w') + (x.alterada ? ' alt' : '') }, off ? 'folga' : 'trabalho'); }),
       h('td', {}, g.podeAlterar ? h('button', { class: 'pq', onclick: () => modalFolgas(g, x) }, 'Alterar') : null))));
     const mn = g.minimos[f], cb = g.cobertura[f];
     linhas.push(h('tr', {}, h('td', { class: 'sutil' }, 'Trabalhando / mínimo'), DIAS.map((_, d) => h('td', { class: cb[d] < mn[d] ? 'def' : 'sutil' }, cb[d] + '/' + mn[d])), h('td', {})));
@@ -373,6 +395,110 @@ async function sugerirCobertura(g) {
         pl.sugestoes.length ? h('button', { class: 'cheio', onclick: async () => { try { await api('/api/gestor/remanejar', { semana: g.semana, remanejo: remanejoDe(pl) }); fecharModal(); toast('Remanejamento aplicado.'); painelGestor(); } catch (e) { toast(e.msg, true); } } }, 'Aprovar estas trocas') : null,
         h('button', { onclick: fecharModal }, 'Cancelar')));
   } catch (e) { toast(e.msg, true); }
+}
+
+// ---------- horas, hora extra e banco de horas (gestor)
+let semanaHoras = '';
+const hm = m => { const s = m < 0 ? '-' : ''; m = Math.abs(m); return s + Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
+const hmS = m => (m > 0 ? '+' : '') + hm(m);
+
+async function gHoras(nav) {
+  let hg;
+  try { hg = await api('/api/gestor/horas' + (semanaHoras ? '?semana=' + semanaHoras : '')); } catch (e) { toast(e.msg, true); return; }
+  semanaHoras = hg.semana;
+  const sel = h('select', { onchange: e => { semanaHoras = e.target.value; painelGestor(); } },
+    hg.semanas.map(s => h('option', { value: s, selected: s === hg.semana }, 'Semana de ' + dataBR(s) + ' a ' + dataBR(somaDias(s, 6)) + (s === hg.semanas[hg.semanas.length - 1] ? ' (atual)' : ''))));
+  const cab = h('tr', {}, h('th', {}, 'Colaborador'), DIAS.map((d, i) => h('th', {}, d, h('br'), h('small', { class: 'sutil' }, dataBR(somaDias(hg.semana, i))))),
+    h('th', {}, 'Semana'), h('th', {}, 'Extra ' + hg.config.adicExtra + '%'), h('th', {}, 'Extra ' + hg.config.adicDobro + '%'), h('th', {}, 'Banco'));
+  const alertas = [];
+  const linhas = hg.linhas.map(l => h('tr', {},
+    h('td', {}, l.nome, h('br'), h('small', { class: 'sutil' }, l.horario.entrada + '–' + l.horario.saida)),
+    l.dias.map(d => {
+      d.alertas.forEach(a => alertas.push(l.nome + ' (' + dataBR(d.data) + '): ' + a));
+      const cls = 'hcel' + (d.folga ? ' hf' : '') + (d.lancado ? ' hl' : '') + (d.alertas.length ? ' halerta' : '') + (d.futuro ? ' hfut' : '');
+      const conteudo = d.lancado
+        ? [h('b', {}, hm(d.realizado)), d.diff ? h('small', { class: d.diff > 0 ? 'hmais' : 'hmenos' }, hmS(d.diff) + (d.diff > 0 ? (d.destino === 'extra' ? ' extra' : ' banco') : '')) : null]
+        : [h('small', { class: 'sutil' }, d.folga ? 'folga' : (d.futuro ? '' : '— lançar'))];
+      return h('td', { class: cls, title: d.alertas.join('\n') }, d.futuro ? conteudo : h('button', { class: 'hbtn', onclick: () => modalPonto(l, d) }, conteudo));
+    }),
+    h('td', { class: l.totais.acimaLim ? 'def' : '' }, hm(l.totais.realizado), h('br'), h('small', { class: 'sutil' }, 'de ' + hm(l.totais.previsto))),
+    h('td', {}, l.totais.extra50 ? hm(l.totais.extra50) : '–'),
+    h('td', {}, l.totais.extra100 ? hm(l.totais.extra100) : '–'),
+    h('td', { class: l.totais.banco > 0 ? 'hmais' : l.totais.banco < 0 ? 'hmenos' : '' }, l.totais.banco ? hmS(l.totais.banco) : '–')));
+
+  const banco = h('div', { class: 'card' }, h('h2', {}, 'Banco de horas'),
+    h('p', { class: 'sutil pequeno' }, 'Prazo para compensar: ' + hg.config.bancoMeses + ' meses (acordo individual, CLT art. 59 §5º). O que vencer deve ser pago como hora extra com adicional de ' + hg.config.adicExtra + '%. As horas mais antigas são compensadas primeiro.'),
+    h('div', { class: 'tabela-rolagem' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Colaborador', 'Saldo', 'Vencido', 'Vence em 30 dias', 'Próximo vencimento', 'Já pago', ''].map(t => h('th', {}, t)))),
+      h('tbody', {}, hg.linhas.filter(l => l.banco.saldo || l.banco.pago).map(l => h('tr', {},
+        h('td', {}, l.nome),
+        h('td', { class: l.banco.saldo > 0 ? 'hmais' : 'hmenos' }, hmS(l.banco.saldo)),
+        h('td', { class: l.banco.vencido ? 'def' : '' }, l.banco.vencido ? hm(l.banco.vencido) : '–'),
+        h('td', { class: l.banco.aVencer ? 'neg' : '' }, l.banco.aVencer ? hm(l.banco.aVencer) : '–'),
+        h('td', {}, l.banco.proxVence ? dataBR(l.banco.proxVence) + '/' + l.banco.proxVence.slice(2, 4) : '–'),
+        h('td', {}, l.banco.pago ? hm(l.banco.pago) : '–'),
+        h('td', {}, l.banco.saldo > 0 ? h('button', { class: 'pq', onclick: () => modalPagar(l) }, 'Pagar como extra') : null)))))),
+    hg.linhas.some(l => l.banco.saldo || l.banco.pago) ? null : h('p', { class: 'sutil' }, 'Ninguém tem saldo no banco de horas.'));
+
+  app.replaceChildren(nav,
+    h('div', { class: 'card' }, h('h2', {}, 'Horas trabalhadas'), sel,
+      h('p', { class: 'sutil pequeno' }, 'Toque num dia para lançar o ponto (entrada, saída e intervalo). Limite desta semana: ' + hm(hg.limite) + ' semanais e ' + hm(hg.limDia) + ' por dia de jornada normal (EC 141/2026). Folga ou feriado trabalhado e pago como extra conta ' + hg.config.adicDobro + '%.'),
+      alertas.length ? h('div', { class: 'msg erro' }, h('b', {}, alertas.length + ' alerta(s) da lei nesta semana:'), h('ul', {}, alertas.map(a => h('li', {}, a)))) : null,
+      h('div', { class: 'tabela-rolagem' }, h('table', { class: 'thoras' }, h('thead', {}, cab), h('tbody', {}, linhas)))),
+    banco);
+}
+
+function modalPonto(l, d) {
+  const ent = h('input', { value: d.entrada || l.horario.entrada, placeholder: 'HH:MM', inputmode: 'numeric', maxlength: '5' });
+  const sai = h('input', { value: d.saida || l.horario.saida, placeholder: 'HH:MM', inputmode: 'numeric', maxlength: '5' });
+  const intv = h('input', { type: 'number', min: '0', max: '240', value: String(d.lancado ? d.intervalo : l.horario.intervalo) });
+  const dest = h('select', {}, h('option', { value: 'banco', selected: d.destino !== 'extra' }, 'Banco de horas'), h('option', { value: 'extra', selected: d.destino === 'extra' }, 'Pagar como hora extra'));
+  const obs = h('input', { value: d.obs || '', maxlength: '140', placeholder: 'Opcional' });
+  const msg = h('div');
+  const enviar = async corpo => {
+    try { await api('/api/gestor/ponto', corpo); fecharModal(); toast('Ponto salvo.'); painelGestor(); }
+    catch (e) { msg.replaceChildren(erroBox(e)); }
+  };
+  abrirModal(h('h2', { class: 'neon-sm' }, 'Ponto de ' + l.nome + ' • ' + DIAS_L[d.dia] + ' ' + dataBR(d.data)),
+    h('p', { class: 'sutil' }, d.folga ? 'Dia de folga: tudo o que for trabalhado conta como hora a mais.' : 'Previsto: ' + hm(d.previsto) + ' (' + l.horario.entrada + ' às ' + l.horario.saida + ', intervalo ' + l.horario.intervalo + ' min).'),
+    d.feriado ? h('p', { class: 'badge warn' }, 'Feriado: ' + d.feriado) : null,
+    h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Entrada'), ent), h('div', {}, h('label', {}, 'Saída'), sai),
+      h('div', {}, h('label', {}, 'Intervalo (min)'), intv), h('div', {}, h('label', {}, 'Tempo a mais vai para'), dest)),
+    h('label', {}, 'Observação'), obs,
+    d.alertas.length ? h('div', { class: 'msg erro' }, h('ul', {}, d.alertas.map(a => h('li', {}, a)))) : null,
+    h('p', { class: 'sutil pequeno' }, 'Tempo a menos é descontado do banco de horas. O ponto é o que aconteceu de verdade: o sistema registra e avisa se algo passou do que a lei permite.'),
+    msg,
+    h('div', { class: 'acoes' },
+      h('button', { class: 'cheio', onclick: () => enviar({ id: l.id, data: d.data, entrada: ent.value, saida: sai.value, intervalo: Number(intv.value), destino: dest.value, obs: obs.value }) }, 'Salvar'),
+      d.lancado ? h('button', { class: 'perigo', onclick: () => enviar({ id: l.id, data: d.data, apagar: true }) }, 'Apagar') : null,
+      h('button', { onclick: fecharModal }, 'Cancelar')));
+}
+
+function modalPagar(l) {
+  const hh = h('input', { type: 'number', min: '0', value: String(Math.floor((l.banco.vencido || l.banco.saldo) / 60)) });
+  const mm = h('input', { type: 'number', min: '0', max: '59', value: String((l.banco.vencido || l.banco.saldo) % 60) });
+  const msg = h('div');
+  abrirModal(h('h2', { class: 'neon-sm' }, 'Pagar banco de horas de ' + l.nome),
+    h('p', {}, 'Saldo: ' + hm(l.banco.saldo) + (l.banco.vencido ? ' • vencido: ' + hm(l.banco.vencido) + ' (deve ser pago)' : '')),
+    h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Horas'), hh), h('div', {}, h('label', {}, 'Minutos'), mm)),
+    h('p', { class: 'sutil pequeno' }, 'O valor sai do banco e vai para a folha como hora extra.'), msg,
+    h('div', { class: 'acoes' },
+      h('button', { class: 'cheio', onclick: async () => { try { await api('/api/gestor/banco/pagar', { id: l.id, min: Number(hh.value) * 60 + Number(mm.value) }); fecharModal(); toast('Pagamento registrado.'); painelGestor(); } catch (e) { msg.replaceChildren(erroBox(e)); } } }, 'Registrar pagamento'),
+      h('button', { onclick: fecharModal }, 'Cancelar')));
+}
+
+function modalHorario(f) {
+  const ent = h('input', { value: f.horario.entrada, maxlength: '5' });
+  const sai = h('input', { value: f.horario.saida, maxlength: '5' });
+  const intv = h('input', { type: 'number', min: '0', max: '120', value: String(f.horario.intervalo) });
+  const msg = h('div');
+  abrirModal(h('h2', { class: 'neon-sm' }, 'Horário de ' + f.nome),
+    h('p', { class: 'sutil' }, 'Jornada normal de cada dia de trabalho. Hoje: ' + f.horarioTexto + '.'),
+    h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Entrada'), ent), h('div', {}, h('label', {}, 'Saída'), sai), h('div', {}, h('label', {}, 'Intervalo (min)'), intv)),
+    h('p', { class: 'sutil pequeno' }, 'A lei: até 8h24 por dia nesta transição (42h em 5 dias) e 8h a partir de 16/12/2027; intervalo de 1h para jornadas acima de 6h.'), msg,
+    h('div', { class: 'acoes' },
+      h('button', { class: 'cheio', onclick: async () => { try { await api('/api/gestor/horario', { id: f.id, entrada: ent.value, saida: sai.value, intervalo: Number(intv.value) }); fecharModal(); toast('Horário salvo.'); painelGestor(); } catch (e) { msg.replaceChildren(erroBox(e)); } } }, 'Salvar'),
+      h('button', { onclick: fecharModal }, 'Cancelar')));
 }
 
 function gEquipe(g) {
@@ -407,8 +533,8 @@ function gEquipe(g) {
     h('div', { class: 'card' }, h('h2', {}, 'Equipe (' + g.equipe.length + ')'),
       temDemo ? h('div', { class: 'msg' }, 'Há colaboradores fictícios de demonstração. ', h('button', { class: 'perigo', onclick: removerDemo }, 'Remover demonstração')) : null,
       h('div', { class: 'tabela-rolagem' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['Nome', 'Função', 'CPF', 'Domingo', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome, f.demo ? h('span', { class: 'badge' }, 'demo') : null), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.cpf), h('td', {}, 'a cada ' + f.domingoSemanas + ' sem.'),
+        h('thead', {}, h('tr', {}, ['Nome', 'Função', 'CPF', 'Horário', 'Domingo', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome, f.demo ? h('span', { class: 'badge' }, 'demo') : null), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.cpf), h('td', { class: 'pequeno' }, f.horario.entrada + '–' + f.horario.saida, h('br'), h('button', { class: 'link pequeno', onclick: () => modalHorario(f) }, 'editar')), h('td', {}, 'a cada ' + f.domingoSemanas + ' sem.'),
           h('td', {}, h('button', { class: 'pq', onclick: () => revogar(f) }, 'Encerrar sessões'), ' ', h('button', { class: 'perigo pq', onclick: () => remover(f) }, 'Remover'))))))))
   );
 }

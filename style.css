@@ -127,3 +127,20 @@ body.entrada main{max-width:none;padding:0 16px}
 @media (max-width:640px){.cal{gap:3px}.cal-dia{min-height:54px;padding:4px 1px}.cal-dia .t{font-size:.6rem;letter-spacing:0}.cal-dia .fer{display:none}}
 .cal-dia.tem-fer::after{content:"";display:none;width:6px;height:6px;border-radius:50%;background:var(--aviso);margin-top:auto}
 @media (max-width:640px){.cal-dia.tem-fer::after{display:block}}
+td.w{color:#d9b48a;background:rgba(217,180,138,.07);font-size:.8rem}
+.hmais{color:var(--lima)}
+.hmenos{color:var(--erro)}
+.thoras td{padding:3px 2px;min-width:62px}
+.thoras td:first-child{min-width:130px}
+.hcel{vertical-align:middle}
+.hcel.hf{background:rgba(210,220,45,.06)}
+.hcel.halerta{box-shadow:inset 0 0 0 2px var(--erro)}
+.hcel small{display:block;font-size:.72rem}
+.hbtn{border:0;background:none;color:var(--txt);padding:4px 2px;width:100%;border-radius:6px}
+.hbtn:hover:not(:disabled){background:rgba(210,220,45,.12)}
+.hbtn b{display:block}
+.resumo-horas{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 14px}
+.resumo-horas div{border:1px solid var(--borda2);border-radius:12px;padding:10px;background:#2f1e19;display:flex;flex-direction:column;gap:2px}
+.resumo-horas b{font-size:1.35rem}
+.resumo-horas small{color:var(--mut);font-size:.75rem}
+@media (max-width:640px){.resumo-horas{grid-template-columns:1fr}}
