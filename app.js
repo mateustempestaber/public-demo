@@ -68,40 +68,10 @@ function barraUsuario(nome, papel) {
   usuario.replaceChildren(h('span', { class: 'sutil' }, nome + ' • ' + papel + ' '), h('button', { onclick: sair }, 'Sair'));
 }
 
-// ---------- entrada: escolha Funcionário ou Gestor (toque, arraste para o lado ou use as setas do teclado)
-let papelEntrada = 'funcionario';
-
+// ---------- entrada: nome completo + CPF. O sistema descobre sozinho se a pessoa é gestor ou funcionário.
 function telaEntrada() {
   usuario.replaceChildren();
   document.body.classList.add('entrada');
-  const ehGestor = papelEntrada === 'gestor';
-  const seletor = h('div', { class: 'seletor' + (ehGestor ? ' dir' : ''), role: 'tablist', 'aria-label': 'Quem é você?' },
-    h('span', { class: 'thumb', 'aria-hidden': 'true' }),
-    h('button', { role: 'tab', 'aria-selected': String(!ehGestor), onclick: () => trocaPapel('funcionario') }, '🍽️ Funcionário'),
-    h('button', { role: 'tab', 'aria-selected': String(ehGestor), onclick: () => trocaPapel('gestor') }, '🔑 Gestor'));
-  seletor.addEventListener('keydown', e => {
-    if (e.key === 'ArrowLeft') trocaPapel('funcionario');
-    if (e.key === 'ArrowRight') trocaPapel('gestor');
-  });
-  const corpo = formEntrar();
-  const card = h('div', { class: 'card login-card' }, seletor, corpo);
-  // arrastar o dedo/mouse para o lado troca de aba
-  let x0 = null;
-  card.addEventListener('pointerdown', e => { if (e.target.closest('input,button,select,textarea,a')) return; x0 = e.clientX; });
-  card.addEventListener('pointerup', e => {
-    if (x0 === null) return;
-    const dx = e.clientX - x0; x0 = null;
-    if (dx < -50) trocaPapel('gestor'); else if (dx > 50) trocaPapel('funcionario');
-  });
-  app.replaceChildren(h('div', { class: 'login' }, h('img', { class: 'logo-grande', src: 'logo.png', alt: 'Quintal do Carmo — Restaurante e Choperia' }),
-    h('p', { class: 'chamada' }, 'Escala de folgas 5x2'), card,
-    h('p', { class: 'sutil rodape' }, 'Entre com o nome completo e o CPF cadastrados pelo restaurante.')));
-  const alvo = card.querySelector('input'); if (alvo) alvo.focus();
-}
-function trocaPapel(p) { if (papelEntrada === p) return; papelEntrada = p; telaEntrada(); }
-
-function formEntrar() {
-  const ehGestor = papelEntrada === 'gestor';
   const nome = h('input', { id: 'nome', placeholder: 'Nome completo', autocomplete: 'username' });
   const cpf = h('input', { id: 'cpf', inputmode: 'numeric', maxlength: '14', placeholder: '000.000.000-00', autocomplete: 'off' });
   cpf.addEventListener('input', () => { // máscara 000.000.000-00 enquanto digita
@@ -110,14 +80,18 @@ function formEntrar() {
   });
   const msg = h('div');
   const entrar = async () => {
-    try { await api('/api/entrar', { papel: papelEntrada, nome: nome.value, cpf: cpf.value }); await iniciar(); }
+    try { await api('/api/entrar', { nome: nome.value, cpf: cpf.value }); await iniciar(); }
     catch (e) { msg.replaceChildren(erroBox(e)); }
   };
   [nome, cpf].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); }));
-  return h('div', {},
-    h('h2', {}, ehGestor ? 'Entrada do gestor' : 'Entrada do funcionário'),
+  const card = h('div', { class: 'card login-card' },
+    h('h2', {}, 'Entrar'),
     h('label', { for: 'nome' }, 'Nome completo'), nome, h('label', { for: 'cpf' }, 'CPF'), cpf, msg,
-    h('div', { class: 'linha' }, h('button', { class: 'cheio', onclick: entrar }, ehGestor ? 'Entrar no painel' : 'Ver minha escala')));
+    h('div', { class: 'linha' }, h('button', { class: 'cheio', onclick: entrar }, 'Entrar')));
+  app.replaceChildren(h('div', { class: 'login' }, h('img', { class: 'logo-grande', src: 'logo.png', alt: 'Quintal do Carmo — Restaurante e Choperia' }),
+    h('p', { class: 'chamada' }, 'Escala de folgas 5x2'), card,
+    h('p', { class: 'sutil rodape' }, 'Gestor ou funcionário: entre com o nome completo e o CPF. O sistema leva você para a sua tela.')));
+  nome.focus();
 }
 
 async function iniciar() {
@@ -136,7 +110,7 @@ function semanaVisual(dias) {
 }
 
 function statusTxt(x) {
-  const m = { pendente: 'em análise pelo gestor', aprovada: 'aprovado', recusada: 'recusado' }[x.status] || x.status;
+  const m = { pendente: 'em análise pelo gestor', aprovada: 'aprovado', recusada: 'recusado', cancelada: 'cancelado' }[x.status] || x.status;
   return m;
 }
 
@@ -145,21 +119,36 @@ async function painelFuncionario() {
   try { p = await api('/api/funcionario/painel'); } catch (e) { return; }
   barraUsuario(p.nome, 'funcionário');
   const sem = p.semanas[semanaFunc] || p.semanas[0];
+  const emAnalise = sem.meuPedido && sem.meuPedido.status === 'pendente';
+  const cancelar = async () => { try { await api('/api/funcionario/cancelar', { id: sem.meuPedido.id }); toast('Pedido cancelado.'); painelFuncionario(); } catch (e) { toast(e.msg, true); } };
   const abas = h('div', { class: 'abas' }, p.semanas.map((s, i) => h('button', { class: i === semanaFunc ? 'ativa' : '', onclick: () => { semanaFunc = i; painelFuncionario(); } },
     s.rotulo + ' (' + dataBR(s.inicio) + ' a ' + dataBR(s.fim) + ')')));
   app.replaceChildren(h('div', { class: 'card' },
     h('h2', {}, p.icone + ' ' + p.nome + ' • ' + p.funcaoNome), abas,
     h('p', {}, 'Suas folgas: ', h('b', { class: 'neon-sm' }, parTxt(sem.par)), ' ', sem.ajustada ? h('span', { class: 'badge warn' }, 'escala ajustada') : null),
     semanaVisual(sem.dias),
-    sem.meuPedido ? h('div', { class: 'msg' }, 'Seu pedido urgente (' + parTxt(sem.meuPedido.novo) + '): ' + statusTxt(sem.meuPedido)) : null,
+    sem.meuPedido ? h('div', { class: 'msg' }, 'Seu pedido urgente (' + parTxt(sem.meuPedido.novo) + '): ' + statusTxt(sem.meuPedido),
+      emAnalise ? h('div', { class: 'acoes' }, h('button', { class: 'pq perigo', onclick: cancelar }, 'Cancelar pedido')) : null) : null,
     !sem.podePedir && sem.motivoBloqueio ? h('div', { class: 'msg' }, sem.motivoBloqueio) : null,
-    h('div', { class: 'acoes' }, h('button', { class: 'aviso', disabled: !sem.podePedir, onclick: () => modalUrgente(p, sem) }, 'Pedir mudança urgente'))));
+    h('div', { class: 'acoes' }, h('button', { class: 'aviso', disabled: !sem.podePedir, onclick: () => modalUrgente(p, sem) }, emAnalise ? 'Trocar meu pedido' : 'Pedir mudança urgente'))));
 }
 
-function seletorDeDias(sem, hoje, inicial) {
+// opcoes (opcional): lista {par, ok, motivo} vinda do servidor; dias que a lei não deixa ficam apagados.
+function seletorDeDias(sem, hoje, inicial, opcoes, aoRecusar) {
   const sel = new Set(inicial);
   const dias = h('div', { class: 'semana' });
   const aoMudar = [];
+  const op = (a, b) => (opcoes || []).find(o => (o.par[0] === Math.min(a, b) && o.par[1] === Math.max(a, b)));
+  // por que o dia d não pode entrar na seleção atual (null = pode)
+  const proibido = d => {
+    if (!opcoes || sel.has(d)) return null;
+    if (sel.size >= 2) return null;
+    if (sel.size === 1) { const a = [...sel][0]; const o = op(a, d); return o && !o.ok ? o.motivo : null; }
+    const algum = opcoes.some(o => o.ok && (o.par[0] === d || o.par[1] === d));
+    if (algum) return null;
+    const ex = opcoes.find(o => !o.ok && (o.par[0] === d || o.par[1] === d) && o.motivo.startsWith('A lei'));
+    return ex ? ex.motivo : 'Este dia não pode ser folga nesta semana.';
+  };
   sem.forEach(d => {
     const travado = d.data < hoje; // dia que já passou não pode mudar
     const rotulo = h('span', { class: 't' }, travado ? (d.folga ? 'folga (já passou)' : 'já passou') : 'trabalho');
@@ -169,6 +158,8 @@ function seletorDeDias(sem, hoje, inicial) {
     if (travado && d.folga) sel.add(d.dia);
     const alterna = () => {
       if (travado) return;
+      const pq = proibido(d.dia);
+      if (pq) { if (aoRecusar) aoRecusar(DIAS_L[d.dia] + ': ' + pq); return; }
       if (sel.has(d.dia)) sel.delete(d.dia); else if (sel.size < 2) sel.add(d.dia);
       atualiza();
     };
@@ -176,7 +167,16 @@ function seletorDeDias(sem, hoje, inicial) {
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alterna(); } });
     dias.append(el);
   });
-  const atualiza = () => { [...dias.children].forEach((n, i) => { n.classList.toggle('sel', sel.has(i)); if (!n.travado) n.rotulo.textContent = sel.has(i) ? 'FOLGA' : 'trabalho'; }); aoMudar.forEach(f => f(sel)); };
+  const atualiza = () => {
+    [...dias.children].forEach((n, i) => {
+      n.classList.toggle('sel', sel.has(i));
+      const pq = n.travado ? null : proibido(i);
+      n.classList.toggle('proibido', !!pq);
+      n.title = pq || '';
+      if (!n.travado) n.rotulo.textContent = sel.has(i) ? 'FOLGA' : (pq ? 'não pode' : 'trabalho');
+    });
+    aoMudar.forEach(f => f(sel));
+  };
   atualiza();
   return { dias, sel, aoMudar };
 }
@@ -184,8 +184,8 @@ function seletorDeDias(sem, hoje, inicial) {
 function modalUrgente(p, sem) {
   const msg = h('div');
   const enviar = h('button', { class: 'cheio', disabled: true }, 'Alertar o gestor');
-  const { dias, sel, aoMudar } = seletorDeDias(sem.dias, p.hoje, []);
-  aoMudar.push(s => { enviar.disabled = s.size !== 2; });
+  const { dias, sel, aoMudar } = seletorDeDias(sem.dias, p.hoje, [], sem.opcoes, txt => msg.replaceChildren(h('div', { class: 'msg erro' }, txt)));
+  aoMudar.push(s => { enviar.disabled = s.size !== 2; msg.replaceChildren(); });
   aoMudar.forEach(f => f(sel));
   const cat = h('select', {}, p.categorias.map(c => h('option', { value: c }, c)));
   const motivo = h('textarea', { rows: '2', maxlength: '140', placeholder: 'Só o necessário. Evite detalhes de saúde.' });
@@ -197,7 +197,9 @@ function modalUrgente(p, sem) {
     } catch (e) { msg.replaceChildren(erroBox(e)); }
   });
   abrirModal(h('h2', { class: 'neon-sm' }, 'Pedido urgente'),
-    h('p', { class: 'sutil' }, 'Folgas atuais: ' + parTxt(sem.par) + '. Toque nos 2 dias que serão sua nova folga.'), dias,
+    h('p', { class: 'sutil' }, 'Folgas atuais: ' + parTxt(sem.par) + '. Toque nos 2 dias que serão sua nova folga.'
+      + (sem.meuPedido && sem.meuPedido.status === 'pendente' ? ' Este pedido substitui o que está em análise.' : '')), dias,
+    h('p', { class: 'sutil pequeno' }, 'Dias apagados ("não pode") quebrariam a lei: no máximo 6 dias seguidos de trabalho e a folga de domingo obrigatória. Toque neles para ver o motivo.'),
     h('label', {}, 'Categoria'), cat, h('label', {}, 'Motivo (opcional)'), motivo, msg,
     h('div', { class: 'acoes' }, enviar, h('button', { onclick: fecharModal }, 'Cancelar')));
 }
@@ -255,7 +257,7 @@ function gPedidos(g) {
       : h('div', { class: 'card' }, h('h2', {}, 'Sem pedidos urgentes'), h('p', { class: 'sutil' }, 'Quando alguém pedir mudança urgente, o alerta aparece aqui para você validar ou recusar.')),
     resto.length ? h('div', { class: 'card' }, h('h3', {}, 'Últimas decisões'), h('ul', { class: 'limpa' }, resto.map(p => h('li', {},
       h('b', {}, p.nome), ' • semana de ' + dataBR(p.semana) + ' • ' + parTxt(p.antigo) + ' → ' + parTxt(p.novo) + ' • ',
-      h('span', { class: 'badge ' + (p.status === 'aprovada' ? 'ok' : 'bad') }, p.status === 'aprovada' ? 'validado' : 'recusado'))))) : null);
+      h('span', { class: 'badge ' + (p.status === 'aprovada' ? 'ok' : p.status === 'cancelada' ? '' : 'bad') }, { aprovada: 'validado', cancelada: 'cancelado pelo funcionário' }[p.status] || 'recusado'))))) : null);
 }
 
 // O gestor pode escolher quaisquer 2 dias de folga para um colaborador (não precisam ser seguidos). A lei é conferida pelo sistema.

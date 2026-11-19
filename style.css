@@ -93,3 +93,9 @@ ul.limpa{list-style:none;margin:0;padding:0}ul.limpa li{padding:5px 0;border-bot
 .neg{color:var(--erro)}
 .grade2{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 .minimos td input{width:56px;padding:5px;text-align:center}
+.dia.proibido{opacity:.38;border-style:dashed;cursor:not-allowed}
+.dia.proibido .t{color:var(--erro)}
+.semana>.dia{min-width:0;overflow:hidden}
+.modal .semana{gap:4px}
+.modal .dia{padding:6px 2px;font-size:.82rem}
+.modal .dia small{font-size:.7rem}
