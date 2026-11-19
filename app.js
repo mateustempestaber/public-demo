@@ -69,28 +69,74 @@ function barraUsuario(nome, papel) {
 }
 
 // ---------- entrada: nome completo + CPF. O sistema descobre sozinho se a pessoa é gestor ou funcionário.
+let animaTira = null;
+
+function cpfValidoJS(v) {
+  const d = v.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
+  const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += +d[i] * (n + 1 - i); const r = s * 10 % 11; return r === 10 ? 0 : r; };
+  return dv(9) === +d[9] && dv(10) === +d[10];
+}
+
 function telaEntrada() {
   usuario.replaceChildren();
   document.body.classList.add('entrada');
-  const nome = h('input', { id: 'nome', placeholder: 'Nome completo', autocomplete: 'username' });
+  if (animaTira) clearInterval(animaTira);
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+
+  // faixa decorativa da semana atual: as 2 folgas "andam" pela semana, como numa escala 5x2
+  const hoje = new Date(); const dom = new Date(hoje); dom.setDate(hoje.getDate() - hoje.getDay());
+  const chips = DIAS.map((d, i) => { const dt = new Date(dom); dt.setDate(dom.getDate() + i);
+    return h('span', { class: i === hoje.getDay() ? 'hoje' : '' }, h('b', {}, d), String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0')); });
+  const pares = [[1, 2], [0, 3], [4, 5], [2, 6], [0, 1], [3, 4]];
+  let k = 0;
+  const pinta = () => { const [a, b] = pares[k++ % pares.length]; chips.forEach((c, i) => c.classList.toggle('off', i === a || i === b)); };
+  pinta();
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) animaTira = setInterval(() => { if (!document.body.classList.contains('entrada')) { clearInterval(animaTira); return; } pinta(); }, 2600);
+
+  const ola = h('p', { class: 'ola' }, 'Que bom te ver!');
+  const nome = h('input', { id: 'nome', placeholder: 'Ex.: Maria da Silva', autocomplete: 'username' });
   const cpf = h('input', { id: 'cpf', inputmode: 'numeric', maxlength: '14', placeholder: '000.000.000-00', autocomplete: 'off' });
+  const campoCpf = h('div', { class: 'campo' }, h('label', { for: 'cpf' }, 'CPF'), h('span', { class: 'ico', 'aria-hidden': 'true' }, '🪪'), cpf, h('span', { class: 'ok', 'aria-hidden': 'true' }, '✓'));
+  const campoNome = h('div', { class: 'campo' }, h('label', { for: 'nome' }, 'Nome completo'), h('span', { class: 'ico', 'aria-hidden': 'true' }, '👤'), nome, h('span', { class: 'ok', 'aria-hidden': 'true' }, '✓'));
+  nome.addEventListener('input', () => {
+    const partes = nome.value.trim().split(/\s+/).filter(Boolean);
+    const primeiro = partes[0] ? partes[0][0].toUpperCase() + partes[0].slice(1).toLowerCase() : '';
+    ola.textContent = primeiro ? 'Olá, ' + primeiro + '! 👋' : 'Que bom te ver!';
+    campoNome.classList.toggle('valido', partes.length >= 2);
+  });
   cpf.addEventListener('input', () => { // máscara 000.000.000-00 enquanto digita
     const d = cpf.value.replace(/\D/g, '').slice(0, 11);
     cpf.value = d.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
+    campoCpf.classList.toggle('valido', cpfValidoJS(cpf.value));
   });
   const msg = h('div');
-  const entrar = async () => {
-    try { await api('/api/entrar', { nome: nome.value, cpf: cpf.value }); await iniciar(); }
+  const botao = h('button', { class: 'cheio btn-entrar', type: 'submit' }, 'Entrar', h('span', { class: 'seta', 'aria-hidden': 'true' }, '→'));
+  const entrar = async ev => {
+    if (ev) ev.preventDefault();
+    botao.disabled = true;
+    try { await api('/api/entrar', { nome: nome.value, cpf: cpf.value }); clearInterval(animaTira); await iniciar(); }
     catch (e) { msg.replaceChildren(erroBox(e)); }
+    finally { botao.disabled = false; }
   };
-  [nome, cpf].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); }));
-  const card = h('div', { class: 'card login-card' },
-    h('h2', {}, 'Entrar'),
-    h('label', { for: 'nome' }, 'Nome completo'), nome, h('label', { for: 'cpf' }, 'CPF'), cpf, msg,
-    h('div', { class: 'linha' }, h('button', { class: 'cheio', onclick: entrar }, 'Entrar')));
-  app.replaceChildren(h('div', { class: 'login' }, h('img', { class: 'logo-grande', src: 'logo.png', alt: 'Quintal do Carmo — Restaurante e Choperia' }),
-    h('p', { class: 'chamada' }, 'Escala de folgas 5x2'), card,
-    h('p', { class: 'sutil rodape' }, 'Gestor ou funcionário: entre com o nome completo e o CPF. O sistema leva você para a sua tela.')));
+  const form = h('form', { class: 'entra-card', novalidate: 'novalidate', onsubmit: entrar },
+    h('p', { class: 'saudacao' }, saudacao.toUpperCase()), ola,
+    h('p', { class: 'sutil' }, 'Entre com seu nome completo e CPF. A gente reconhece se você é da equipe ou da gestão.'),
+    campoNome, campoCpf, msg, botao,
+    h('div', { class: 'dicas' }, h('span', {}, '🔒 Seu CPF não fica salvo inteiro'), h('span', {}, '🍽️ Equipe e 🔑 gestão no mesmo lugar')));
+
+  app.replaceChildren(h('div', { class: 'entra' },
+    h('section', { class: 'entra-marca' },
+      h('div', { class: 'espiral', 'aria-hidden': 'true' }),
+      h('img', { class: 'entra-logo', src: 'logo.png', alt: 'Quintal do Carmo — Restaurante e Choperia' }),
+      h('span', { class: 'selo' }, 'Escala de folgas 5x2'),
+      h('h1', { class: 'manchete' }, 'Trabalho em equipe,', h('br'), h('em', {}, 'folga garantida.')),
+      h('p', { class: 'sub' }, 'Veja seus dias de folga, peça mudanças quando precisar e acompanhe tudo pelo celular. Sempre dentro da lei.'),
+      h('div', { class: 'tira', 'aria-hidden': 'true' }, chips),
+      h('p', { class: 'tira-leg', 'aria-hidden': 'true' }, 'Semana atual • 5 dias de trabalho, 2 de folga')),
+    form,
+    h('p', { class: 'rod-entra' }, 'Quintal do Carmo • Restaurante e Choperia')));
   nome.focus();
 }
 
