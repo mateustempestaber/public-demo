@@ -114,6 +114,7 @@ function statusTxt(x) {
   return m;
 }
 
+const TURNO_NOME = { A: 'Abertura', F: 'Fechamento', U: 'Turno único' };
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 function legendaSemana() {
@@ -140,6 +141,7 @@ function calendarioMes(cal, mes) {
       return h('div', { class: cls, title: d.feriado || '' },
         h('b', {}, String(+d.data.slice(8))),
         !fora && d.folga ? h('span', { class: 't' }, 'folga') : null,
+        !fora && !d.folga && d.turno ? h('span', { class: 'hr t' + d.turno.tipo }, d.turno.entrada.slice(0, 5) + '–' + d.turno.saida.slice(0, 5)) : null,
         !fora && d.feriado ? h('span', { class: 'fer' }, d.feriado) : null);
     }));
 }
@@ -148,7 +150,7 @@ function cartaoMinhasHoras(hs) {
   const hm = m => { const s = m < 0 ? '-' : ''; m = Math.abs(m); return s + Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
   const t = hs.totais, b = hs.banco;
   return h('div', { class: 'card' }, h('h2', {}, 'Minhas horas'),
-    h('p', { class: 'sutil pequeno' }, 'Seu horário: ' + hs.horario + '.'),
+    h('p', { class: 'sutil pequeno' }, 'Seus turnos são montados automaticamente pelo horário de funcionamento do restaurante.'),
     h('div', { class: 'resumo-horas' },
       h('div', {}, h('small', {}, 'Esta semana'), h('b', {}, hm(t.realizado)), h('small', {}, 'de ' + hm(t.previsto) + ' previstas')),
       h('div', {}, h('small', {}, 'Banco nesta semana'), h('b', { class: t.banco > 0 ? 'hmais' : t.banco < 0 ? 'hmenos' : '' }, (t.banco > 0 ? '+' : '') + hm(t.banco)), h('small', {}, 'horas a mais ou a menos')),
@@ -158,7 +160,7 @@ function cartaoMinhasHoras(hs) {
       h('thead', {}, h('tr', {}, h('th', {}, 'Dia'), h('th', {}, 'Previsto'), h('th', {}, 'Trabalhado'), h('th', {}, 'Diferença'))),
       h('tbody', {}, hs.dias.map(d => h('tr', {},
         h('td', {}, DIAS[d.dia] + ' ' + dataBR(d.data)),
-        h('td', {}, d.folga ? 'folga' : hm(d.previsto)),
+        h('td', {}, d.folga || !d.turno ? 'folga' : [d.turno.entrada + '–' + d.turno.saida, h('br'), h('small', { class: 'sutil' }, TURNO_NOME[d.turno.tipo] + ' • ' + hm(d.previsto))]),
         h('td', {}, d.lancado ? hm(d.realizado) : h('span', { class: 'sutil' }, d.futuro || d.folga ? '' : 'não lançado')),
         h('td', { class: d.diff > 0 ? 'hmais' : d.diff < 0 ? 'hmenos' : '' }, d.lancado && d.diff ? (d.diff > 0 ? '+' : '') + hm(d.diff) : '')))))),
     h('p', { class: 'sutil pequeno' }, 'Quem lança o ponto é o gestor. Se algo estiver errado, fale com ele.'));
@@ -281,7 +283,7 @@ async function painelGestor() {
   semanaGestor = g.semana;
   const eu = await api('/api/eu').catch(() => ({ nome: 'Gestor' }));
   barraUsuario(eu.nome || 'Gestor', 'gestor');
-  const abas = [['painel', 'Pedidos' + (g.pendentes ? ' (' + g.pendentes + ')' : '')], ['escala', 'Escala'], ['horas', 'Horas e banco'], ['equipe', 'Equipe'], ['cobertura', 'Cobertura mínima'], ['regras', 'Regras e sindicato'], ['audit', 'Auditoria'], ['log', 'Registro']];
+  const abas = [['painel', 'Pedidos' + (g.pendentes ? ' (' + g.pendentes + ')' : '')], ['escala', 'Escala'], ['horas', 'Horas e banco'], ['equipe', 'Equipe'], ['cobertura', 'Horário e cobertura'], ['regras', 'Regras e sindicato'], ['audit', 'Auditoria'], ['log', 'Registro']];
   const nav = h('div', { class: 'abas' }, abas.map(([k, t]) => h('button', { class: abaGestor === k ? 'ativa' : '', onclick: () => { abaGestor = k; painelGestor(); } }, t)));
   if (abaGestor === 'horas') { app.replaceChildren(nav, h('div', { class: 'card' }, h('p', { class: 'sutil' }, 'Carregando horas...'))); return gHoras(nav); }
   app.replaceChildren(nav, { painel: gPedidos, escala: gEscala, equipe: gEquipe, cobertura: gCobertura, regras: gRegras, audit: gAudit, log: gLog }[abaGestor](g));
@@ -372,7 +374,8 @@ function gEscala(g) {
     if (!membros.length) return;
     linhas.push(h('tr', {}, h('td', { colspan: '9', class: 'neon-sm' }, g.funcoesInfo[f].icone + ' ' + g.funcoesInfo[f].plural)));
     membros.forEach(x => linhas.push(h('tr', {}, h('td', {}, x.nome),
-      DIAS.map((_, d) => { const off = x.par[0] === d || x.par[1] === d; return h('td', { class: (off ? 'f' : 'w') + (x.alterada ? ' alt' : '') }, off ? 'folga' : 'trabalho'); }),
+      DIAS.map((_, d) => { const off = x.par[0] === d || x.par[1] === d; const t = x.turnos && x.turnos[d];
+        return h('td', { class: (off ? 'f' : 'w t' + (t ? t.tipo : '')) + (x.alterada ? ' alt' : ''), title: t ? TURNO_NOME[t.tipo] : '' }, off ? 'folga' : (t ? [h('b', {}, t.entrada), h('small', {}, t.saida)] : 'trabalho')); }),
       h('td', {}, g.podeAlterar ? h('button', { class: 'pq', onclick: () => modalFolgas(g, x) }, 'Alterar') : null))));
     const mn = g.minimos[f], cb = g.cobertura[f];
     linhas.push(h('tr', {}, h('td', { class: 'sutil' }, 'Trabalhando / mínimo'), DIAS.map((_, d) => h('td', { class: cb[d] < mn[d] ? 'def' : 'sutil' }, cb[d] + '/' + mn[d])), h('td', {})));
@@ -380,6 +383,8 @@ function gEscala(g) {
   return h('div', { class: 'card' }, h('h2', {}, 'Escala completa'), sel,
     g.previsao ? h('div', { class: 'msg' }, 'Previsão: esta semana ainda não está fechada. Ela é calculada a partir da escala atual, seguindo a lei, e pode mudar. Para alterar folgas, use a semana atual ou a próxima.') : null,
     !g.podeAlterar && !g.previsao ? h('div', { class: 'msg' }, 'Semana que já passou: só para consulta.') : null,
+    h('div', { class: 'legenda' }, h('span', {}, h('i', { class: 'leg-ta' }), 'Abertura'), h('span', {}, h('i', { class: 'leg-tf' }), 'Fechamento'), h('span', {}, h('i', { class: 'leg-tu' }), 'Turno único (dia curto)'), h('span', {}, h('i', { class: 'leg-folga' }), 'Folga')),
+    g.avisosTurno && g.avisosTurno.length ? h('details', { class: 'msg avisos-turno' }, h('summary', {}, 'Cobertura de horário: ' + g.avisosTurno.length + ' aviso(s) nesta semana'), h('ul', {}, g.avisosTurno.map(a => h('li', {}, a)))) : null,
     g.ajustada ? h('p', { class: 'badge warn' }, 'Esta semana teve ajuste') : null,
     g.deficits.length ? h('div', { class: 'msg erro' }, h('b', { class: 'def' }, 'Furo: ' + g.deficits.length + ' ponto(s) abaixo da cobertura mínima nesta semana. '),
       g.podeAlterar ? h('button', { class: 'pq', onclick: () => sugerirCobertura(g) }, 'Sugerir como cobrir') : null) : null,
@@ -412,7 +417,7 @@ async function gHoras(nav) {
     h('th', {}, 'Semana'), h('th', {}, 'Banco na semana'));
   const alertas = [];
   const linhas = hg.linhas.map(l => h('tr', {},
-    h('td', {}, l.nome, h('br'), h('small', { class: 'sutil' }, l.horario.entrada + '–' + l.horario.saida)),
+    h('td', {}, l.nome),
     l.dias.map(d => {
       d.alertas.forEach(a => alertas.push(l.nome + ' (' + dataBR(d.data) + '): ' + a));
       const cls = 'hcel' + (d.folga ? ' hf' : '') + (d.lancado ? ' hl' : '') + (d.alertas.length ? ' halerta' : '') + (d.futuro ? ' hfut' : '');
@@ -446,9 +451,10 @@ async function gHoras(nav) {
 }
 
 function modalPonto(l, d) {
-  const ent = h('input', { value: d.entrada || l.horario.entrada, placeholder: 'HH:MM', inputmode: 'numeric', maxlength: '5' });
-  const sai = h('input', { value: d.saida || l.horario.saida, placeholder: 'HH:MM', inputmode: 'numeric', maxlength: '5' });
-  const intv = h('input', { type: 'number', min: '0', max: '240', value: String(d.lancado ? d.intervalo : l.horario.intervalo) });
+  const tt = d.turno || {};
+  const ent = h('input', { value: d.entrada || tt.entrada || '', placeholder: 'HH:MM', inputmode: 'numeric', maxlength: '5' });
+  const sai = h('input', { value: d.saida || tt.saida || '', placeholder: 'HH:MM', inputmode: 'numeric', maxlength: '5' });
+  const intv = h('input', { type: 'number', min: '0', max: '240', value: String(d.lancado ? d.intervalo : (tt.intervalo || 0)) });
   const obs = h('input', { value: d.obs || '', maxlength: '140', placeholder: 'Opcional' });
   const msg = h('div');
   const enviar = async corpo => {
@@ -456,7 +462,7 @@ function modalPonto(l, d) {
     catch (e) { msg.replaceChildren(erroBox(e)); }
   };
   abrirModal(h('h2', { class: 'neon-sm' }, 'Ponto de ' + l.nome + ' • ' + DIAS_L[d.dia] + ' ' + dataBR(d.data)),
-    h('p', { class: 'sutil' }, d.folga ? 'Dia de folga: o que for trabalhado vai todo para o banco de horas.' : 'Previsto: ' + hm(d.previsto) + ' (' + l.horario.entrada + ' às ' + l.horario.saida + ', intervalo ' + l.horario.intervalo + ' min).'),
+    h('p', { class: 'sutil' }, d.folga ? 'Dia de folga: o que for trabalhado vai todo para o banco de horas.' : 'Turno do dia: ' + TURNO_NOME[tt.tipo] + ', ' + tt.entrada + ' às ' + tt.saida + ' (intervalo ' + tt.intervalo + ' min) • ' + hm(d.previsto) + ' de trabalho.'),
     d.feriado ? h('p', { class: 'badge warn' }, 'Feriado: ' + d.feriado) : null,
     h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Entrada'), ent), h('div', {}, h('label', {}, 'Saída'), sai),
       h('div', {}, h('label', {}, 'Intervalo (min)'), intv)),
@@ -467,20 +473,6 @@ function modalPonto(l, d) {
     h('div', { class: 'acoes' },
       h('button', { class: 'cheio', onclick: () => enviar({ id: l.id, data: d.data, entrada: ent.value, saida: sai.value, intervalo: Number(intv.value), obs: obs.value }) }, 'Salvar'),
       d.lancado ? h('button', { class: 'perigo', onclick: () => enviar({ id: l.id, data: d.data, apagar: true }) }, 'Apagar') : null,
-      h('button', { onclick: fecharModal }, 'Cancelar')));
-}
-
-function modalHorario(f) {
-  const ent = h('input', { value: f.horario.entrada, maxlength: '5' });
-  const sai = h('input', { value: f.horario.saida, maxlength: '5' });
-  const intv = h('input', { type: 'number', min: '0', max: '120', value: String(f.horario.intervalo) });
-  const msg = h('div');
-  abrirModal(h('h2', { class: 'neon-sm' }, 'Horário de ' + f.nome),
-    h('p', { class: 'sutil' }, 'Jornada normal de cada dia de trabalho. Hoje: ' + f.horarioTexto + '.'),
-    h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Entrada'), ent), h('div', {}, h('label', {}, 'Saída'), sai), h('div', {}, h('label', {}, 'Intervalo (min)'), intv)),
-    h('p', { class: 'sutil pequeno' }, 'A lei: até 8h24 por dia nesta transição (42h em 5 dias) e 8h a partir de 16/12/2027; intervalo de 1h para jornadas acima de 6h.'), msg,
-    h('div', { class: 'acoes' },
-      h('button', { class: 'cheio', onclick: async () => { try { await api('/api/gestor/horario', { id: f.id, entrada: ent.value, saida: sai.value, intervalo: Number(intv.value) }); fecharModal(); toast('Horário salvo.'); painelGestor(); } catch (e) { msg.replaceChildren(erroBox(e)); } } }, 'Salvar'),
       h('button', { onclick: fecharModal }, 'Cancelar')));
 }
 
@@ -516,10 +508,20 @@ function gEquipe(g) {
     h('div', { class: 'card' }, h('h2', {}, 'Equipe (' + g.equipe.length + ')'),
       temDemo ? h('div', { class: 'msg' }, 'Há colaboradores fictícios de demonstração. ', h('button', { class: 'perigo', onclick: removerDemo }, 'Remover demonstração')) : null,
       h('div', { class: 'tabela-rolagem' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['Nome', 'Função', 'CPF', 'Horário', 'Domingo', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome, f.demo ? h('span', { class: 'badge' }, 'demo') : null), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.cpf), h('td', { class: 'pequeno' }, f.horario.entrada + '–' + f.horario.saida, h('br'), h('button', { class: 'link pequeno', onclick: () => modalHorario(f) }, 'editar')), h('td', {}, 'a cada ' + f.domingoSemanas + ' sem.'),
+        h('thead', {}, h('tr', {}, ['Nome', 'Função', 'CPF', 'Domingo', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome, f.demo ? h('span', { class: 'badge' }, 'demo') : null), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.cpf), h('td', {}, 'a cada ' + f.domingoSemanas + ' sem.'),
           h('td', {}, h('button', { class: 'pq', onclick: () => revogar(f) }, 'Encerrar sessões'), ' ', h('button', { class: 'perigo pq', onclick: () => remover(f) }, 'Remover'))))))))
   );
+}
+
+function cartaoFuncionamento(g) {
+  const ins = g.funcionamento.map(f => [h('input', { value: f.abre, maxlength: '5', 'aria-label': 'abre' }), h('input', { value: f.fecha, maxlength: '5', 'aria-label': 'fecha' })]);
+  return h('div', { class: 'card' }, h('h2', {}, 'Horário de funcionamento'),
+    h('p', { class: 'sutil pequeno' }, 'Os turnos de todos são montados a partir daqui: dias longos viram abertura + fechamento; dias curtos, turno único. Só mude se o horário do restaurante mudar.'),
+    h('div', { class: 'tabela-rolagem' }, h('table', { class: 'minimos' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Dia'), h('th', {}, 'Abre'), h('th', {}, 'Fecha'))),
+      h('tbody', {}, DIAS_L.map((d, i) => h('tr', {}, h('td', {}, d), h('td', {}, ins[i][0]), h('td', {}, ins[i][1])))))),
+    h('div', { class: 'acoes' }, h('button', { onclick: async () => { try { await api('/api/gestor/funcionamento', { dias: ins.map(([a, b]) => ({ abre: a.value, fecha: b.value })) }); toast('Horário salvo. Turnos recalculados.'); painelGestor(); } catch (e) { toast(e.msg, true); } } }, 'Salvar horário')));
 }
 
 function gCobertura(g) {
@@ -528,9 +530,9 @@ function gCobertura(g) {
     return h('tr', {}, h('td', {}, g.funcoesInfo[f].nome), ins.map(i => h('td', {}, i)),
       h('td', {}, h('button', { onclick: async () => { try { await api('/api/gestor/minimos', { funcao: f, dias: ins.map(i => Number(i.value)) }); toast('Cobertura salva.'); painelGestor(); } catch (e) { toast(e.msg, true); } } }, 'Salvar')));
   });
-  return h('div', { class: 'card' }, h('h2', {}, 'Cobertura mínima por dia'),
+  return h('div', {}, cartaoFuncionamento(g), h('div', { class: 'card' }, h('h2', {}, 'Cobertura mínima por dia'),
     h('p', { class: 'sutil' }, 'Quantas pessoas de cada função precisam trabalhar em cada dia. O sistema usa esses números para montar as semanas novas e para barrar qualquer troca que deixe furo.'),
-    h('div', { class: 'tabela-rolagem' }, h('table', { class: 'minimos' }, h('thead', {}, h('tr', {}, h('th', {}, 'Função'), DIAS.map(d => h('th', {}, d)), h('th', {}))), h('tbody', {}, linhas))));
+    h('div', { class: 'tabela-rolagem' }, h('table', { class: 'minimos' }, h('thead', {}, h('tr', {}, h('th', {}, 'Função'), DIAS.map(d => h('th', {}, d)), h('th', {}))), h('tbody', {}, linhas)))));
 }
 
 function gRegras(g) {

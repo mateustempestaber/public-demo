@@ -144,3 +144,16 @@ td.w{color:#d9b48a;background:rgba(217,180,138,.07);font-size:.8rem}
 .resumo-horas b{font-size:1.35rem}
 .resumo-horas small{color:var(--mut);font-size:.75rem}
 @media (max-width:640px){.resumo-horas{grid-template-columns:1fr}}
+td.w b{display:block;font-size:.82rem;color:var(--txt)}
+td.w small{display:block;font-size:.72rem;color:var(--mut)}
+td.tA{background:rgba(120,190,255,.10)}
+td.tF{background:rgba(190,140,255,.13)}
+td.tU{background:rgba(217,180,138,.10)}
+.leg-ta{background:rgba(120,190,255,.25);border:1px solid rgba(120,190,255,.6)}
+.leg-tf{background:rgba(190,140,255,.28);border:1px solid rgba(190,140,255,.6)}
+.leg-tu{background:rgba(217,180,138,.25);border:1px solid rgba(217,180,138,.6)}
+.cal-dia .hr{font-size:.62rem;color:var(--mut);white-space:nowrap}
+.cal-dia .hr.tA{color:#9fd0ff}.cal-dia .hr.tF{color:#cfb0ff}
+.avisos-turno summary{cursor:pointer;font-weight:600}
+.minimos td input[aria-label]{width:72px}
+@media (max-width:640px){.cal-dia .hr{font-size:.5rem;letter-spacing:-.3px}}
