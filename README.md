@@ -44,6 +44,10 @@ curl -fsSL https://raw.githubusercontent.com/mateustempestaber/public-demo/homol
 
 O script baixa o programa, cria um serviço que liga sozinho quando o servidor reinicia e libera a porta 8787 no firewall do servidor. Libere a porta 8787 também nas regras de entrada do painel da nuvem.
 
+## Opção 5 — o dono abre o sistema do próprio PC para os amigos (porta própria, sem cadastro)
+
+No Windows: coloque o `bore.exe` (do projeto aberto [bore](https://github.com/ekzhang/bore/releases)) nesta pasta e dê dois cliques em `abrir-para-amigos.bat`. Ele liga o sistema na porta 8787 e mostra um endereço público como `http://bore.pub:41234`. Funciona enquanto o PC e a janela estiverem abertos.
+
 ## Logins de teste
 
 Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou funcionário e abre a tela certa.
