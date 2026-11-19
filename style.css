@@ -105,3 +105,25 @@ body.entrada main{max-width:none;padding:0 16px}
 .leg-trab{background:#2f1e19;border:1px solid var(--borda2)}
 .leg-hoje{border:2px dashed var(--aviso)}
 .legenda i.leg-fer{width:10px;height:10px;border-radius:50%;background:var(--aviso);margin:0 7px 0 4px}
+.nav-mes{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 10px}
+.nav-mes h3{margin:0;color:var(--txt);font-size:1.1rem}
+.nav-mes button{font-size:1.2rem;line-height:1;padding:6px 14px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:12px}
+.cal-cab{text-align:center;font-size:.78rem;color:var(--mut);padding-bottom:2px}
+.cal-dia{min-width:0;min-height:64px;border:1px solid var(--borda2);border-radius:10px;padding:6px 4px;background:#2f1e19;display:flex;flex-direction:column;align-items:center;gap:2px;overflow:hidden}
+.cal-dia b{font-size:.95rem}
+.cal-dia .t{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.cal-dia .fer{font-size:.62rem;color:var(--aviso);text-align:center;line-height:1.15}
+.cal-dia.folga{border-color:var(--lima);background:rgba(210,220,45,.15)}
+.cal-dia.folga .t{color:var(--lima)}
+.cal-dia.prev{border:1px dashed var(--lima);background:rgba(210,220,45,.06)}
+.cal-dia.prev .t{color:var(--lima);opacity:.8}
+.cal-dia.hoje{outline:2px dashed var(--aviso);outline-offset:-1px}
+.cal-dia.passou{opacity:.6}
+.cal-dia.fora{opacity:.25;background:transparent}
+.leg-prev{border:1px dashed var(--lima);background:rgba(210,220,45,.06)}
+.linha-semana{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--borda2)}
+.linha-semana .acoes{margin-top:0}
+@media (max-width:640px){.cal{gap:3px}.cal-dia{min-height:54px;padding:4px 1px}.cal-dia .t{font-size:.6rem;letter-spacing:0}.cal-dia .fer{display:none}}
+.cal-dia.tem-fer::after{content:"";display:none;width:6px;height:6px;border-radius:50%;background:var(--aviso);margin-top:auto}
+@media (max-width:640px){.cal-dia.tem-fer::after{display:block}}

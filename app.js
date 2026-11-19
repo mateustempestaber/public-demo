@@ -5,7 +5,7 @@ const app = document.getElementById('app');
 const usuario = document.getElementById('usuario');
 let abaGestor = 'painel';
 let semanaGestor = '';
-let semanaFunc = 0;
+let mesFunc = 0; // 0 = mês atual, 1 = próximo mês
 
 // Tudo é montado com textContent (nunca innerHTML com dados), então nome/motivo digitados não executam código.
 function h(tag, attrs, ...filhos) {
@@ -114,31 +114,72 @@ function statusTxt(x) {
   return m;
 }
 
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
 function legendaSemana() {
   return h('div', { class: 'legenda', 'aria-label': 'Legenda' },
     h('span', {}, h('i', { class: 'leg-folga' }), 'Folga'),
+    h('span', {}, h('i', { class: 'leg-prev' }), 'Folga prevista'),
     h('span', {}, h('i', { class: 'leg-trab' }), 'Trabalho'),
     h('span', {}, h('i', { class: 'leg-hoje' }), 'Hoje'),
-    h('span', {}, h('i', { class: 'leg-fer' }), 'Feriado (nome em laranja)'));
+    h('span', {}, h('i', { class: 'leg-fer' }), 'Feriado'));
+}
+
+// calendário do mês: semanas de domingo a sábado; dias de outro mês ficam apagados
+function calendarioMes(cal, mes) {
+  const semanas = [];
+  for (let i = 0; i < cal.length; i += 7) {
+    const sem = cal.slice(i, i + 7);
+    if (sem.some(d => d.data.slice(0, 7) === mes)) semanas.push(sem);
+  }
+  return h('div', { class: 'cal' },
+    DIAS.map(d => h('div', { class: 'cal-cab' }, d)),
+    semanas.flat().map(d => {
+      const fora = d.data.slice(0, 7) !== mes;
+      const cls = 'cal-dia' + (fora ? ' fora' : '') + (!fora && d.folga ? (d.previsao ? ' prev' : ' folga') : '') + (d.hoje ? ' hoje' : '') + (d.passado ? ' passou' : '') + (!fora && d.feriado ? ' tem-fer' : '');
+      return h('div', { class: cls, title: d.feriado || '' },
+        h('b', {}, String(+d.data.slice(8))),
+        !fora && d.folga ? h('span', { class: 't' }, 'folga') : null,
+        !fora && d.feriado ? h('span', { class: 'fer' }, d.feriado) : null);
+    }));
 }
 
 async function painelFuncionario() {
   let p;
   try { p = await api('/api/funcionario/painel'); } catch (e) { return; }
   barraUsuario(p.nome, 'funcionário');
-  const sem = p.semanas[semanaFunc] || p.semanas[0];
-  const emAnalise = sem.meuPedido && sem.meuPedido.status === 'pendente';
-  const cancelar = async () => { try { await api('/api/funcionario/cancelar', { id: sem.meuPedido.id }); toast('Pedido cancelado.'); painelFuncionario(); } catch (e) { toast(e.msg, true); } };
-  const abas = h('div', { class: 'abas' }, p.semanas.map((s, i) => h('button', { class: i === semanaFunc ? 'ativa' : '', onclick: () => { semanaFunc = i; painelFuncionario(); } },
-    s.rotulo + ' (' + dataBR(s.inicio) + ' a ' + dataBR(s.fim) + ')')));
-  app.replaceChildren(h('div', { class: 'card' },
-    h('h2', {}, p.icone + ' ' + p.nome + ' • ' + p.funcaoNome), abas,
-    h('p', {}, 'Suas folgas: ', h('b', { class: 'neon-sm' }, parTxt(sem.par)), ' ', sem.ajustada ? h('span', { class: 'badge warn' }, 'escala ajustada') : null),
-    semanaVisual(sem.dias), legendaSemana(),
-    sem.meuPedido ? h('div', { class: 'msg' }, 'Seu pedido urgente (' + parTxt(sem.meuPedido.novo) + '): ' + statusTxt(sem.meuPedido),
-      emAnalise ? h('div', { class: 'acoes' }, h('button', { class: 'pq perigo', onclick: cancelar }, 'Cancelar pedido')) : null) : null,
-    !sem.podePedir && sem.motivoBloqueio ? h('div', { class: 'msg' }, sem.motivoBloqueio) : null,
-    h('div', { class: 'acoes' }, h('button', { class: 'aviso', disabled: !sem.podePedir, onclick: () => modalUrgente(p, sem) }, emAnalise ? 'Trocar meu pedido' : 'Pedir mudança urgente'))));
+  const m0 = p.hoje.slice(0, 7);
+  const dt = new Date(+m0.slice(0, 4), +m0.slice(5, 7), 1); // mês seguinte
+  const m1 = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
+  const mes = mesFunc ? m1 : m0;
+  const nomeMes = MESES[+mes.slice(5, 7) - 1] + ' de ' + mes.slice(0, 4);
+  const navMes = h('div', { class: 'nav-mes' },
+    h('button', { class: 'pq', disabled: mesFunc === 0, 'aria-label': 'Mês anterior', onclick: () => { mesFunc = 0; painelFuncionario(); } }, '‹'),
+    h('h3', {}, nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)),
+    h('button', { class: 'pq', disabled: mesFunc === 1, 'aria-label': 'Próximo mês', onclick: () => { mesFunc = 1; painelFuncionario(); } }, '›'));
+
+  const linhaSemana = sem => {
+    const emAnalise = sem.meuPedido && sem.meuPedido.status === 'pendente';
+    const cancelar = async () => { try { await api('/api/funcionario/cancelar', { id: sem.meuPedido.id }); toast('Pedido cancelado.'); painelFuncionario(); } catch (e) { toast(e.msg, true); } };
+    return h('div', { class: 'linha-semana' },
+      h('div', {}, h('b', {}, sem.rotulo), h('span', { class: 'sutil' }, ' (' + dataBR(sem.inicio) + ' a ' + dataBR(sem.fim) + ')'),
+        h('div', {}, 'Folgas: ', h('b', { class: 'neon-sm' }, parTxt(sem.par))),
+        sem.meuPedido ? h('div', { class: 'sutil pequeno' }, 'Pedido urgente (' + parTxt(sem.meuPedido.novo) + '): ' + statusTxt(sem.meuPedido)) : null,
+        !sem.podePedir && sem.motivoBloqueio ? h('div', { class: 'sutil pequeno' }, sem.motivoBloqueio) : null),
+      h('div', { class: 'acoes' },
+        emAnalise ? h('button', { class: 'pq perigo', onclick: cancelar }, 'Cancelar pedido') : null,
+        h('button', { class: 'aviso pq', disabled: !sem.podePedir, onclick: () => modalUrgente(p, sem) }, emAnalise ? 'Trocar pedido' : 'Pedir mudança')));
+  };
+
+  app.replaceChildren(
+    h('div', { class: 'card' },
+      h('h2', {}, p.icone + ' ' + p.nome + ' • ' + p.funcaoNome),
+      navMes, calendarioMes(p.calendario, mes), legendaSemana(),
+      h('p', { class: 'sutil pequeno' }, 'Depois da próxima semana a escala é uma previsão e ainda pode mudar.')),
+    h('div', { class: 'card' },
+      h('h2', {}, 'Mudar uma folga'),
+      h('p', { class: 'sutil pequeno' }, 'Dá para pedir mudança urgente na semana atual e na próxima. O gestor valida ou recusa.'),
+      p.semanas.map(linhaSemana)));
 }
 
 // opcoes (opcional): lista {par, ok, motivo} vinda do servidor; dias que a lei não deixa ficam apagados.
@@ -301,7 +342,7 @@ function modalFolgas(g, x) {
 
 function gEscala(g) {
   const sel = h('select', { onchange: e => { semanaGestor = e.target.value; painelGestor(); } },
-    g.semanas.map((s, i) => h('option', { value: s, selected: s === g.semana }, (i ? 'Próxima semana' : 'Semana atual') + ' (' + dataBR(s) + ')')));
+    g.semanas.map((s, i) => h('option', { value: s, selected: s === g.semana }, 'Semana de ' + dataBR(s) + ' a ' + dataBR(somaDias(s, 6)) + ' (' + g.rotulos[i] + ')')));
   const cab = h('tr', {}, h('th', {}, 'Colaborador'), DIAS.map((d, i) => h('th', {}, d, h('br'), h('small', { class: 'sutil' }, dataBR(somaDias(g.semana, i))), g.feriados[i] ? h('br') : null, g.feriados[i] ? h('small', { class: 'badge warn' }, 'feriado') : null)), h('th', {}, ''));
   const linhas = [];
   g.ordem.forEach(f => {
@@ -310,14 +351,16 @@ function gEscala(g) {
     linhas.push(h('tr', {}, h('td', { colspan: '9', class: 'neon-sm' }, g.funcoesInfo[f].icone + ' ' + g.funcoesInfo[f].plural)));
     membros.forEach(x => linhas.push(h('tr', {}, h('td', {}, x.nome),
       DIAS.map((_, d) => { const off = x.par[0] === d || x.par[1] === d; return h('td', { class: (off ? 'f' : '') + (x.alterada ? ' alt' : '') }, off ? 'folga' : '•'); }),
-      h('td', {}, h('button', { class: 'pq', onclick: () => modalFolgas(g, x) }, 'Alterar')))));
+      h('td', {}, g.podeAlterar ? h('button', { class: 'pq', onclick: () => modalFolgas(g, x) }, 'Alterar') : null))));
     const mn = g.minimos[f], cb = g.cobertura[f];
     linhas.push(h('tr', {}, h('td', { class: 'sutil' }, 'Trabalhando / mínimo'), DIAS.map((_, d) => h('td', { class: cb[d] < mn[d] ? 'def' : 'sutil' }, cb[d] + '/' + mn[d])), h('td', {})));
   });
   return h('div', { class: 'card' }, h('h2', {}, 'Escala completa'), sel,
+    g.previsao ? h('div', { class: 'msg' }, 'Previsão: esta semana ainda não está fechada. Ela é calculada a partir da escala atual, seguindo a lei, e pode mudar. Para alterar folgas, use a semana atual ou a próxima.') : null,
+    !g.podeAlterar && !g.previsao ? h('div', { class: 'msg' }, 'Semana que já passou: só para consulta.') : null,
     g.ajustada ? h('p', { class: 'badge warn' }, 'Esta semana teve ajuste') : null,
     g.deficits.length ? h('div', { class: 'msg erro' }, h('b', { class: 'def' }, 'Furo: ' + g.deficits.length + ' ponto(s) abaixo da cobertura mínima nesta semana. '),
-      h('button', { class: 'pq', onclick: () => sugerirCobertura(g) }, 'Sugerir como cobrir')) : null,
+      g.podeAlterar ? h('button', { class: 'pq', onclick: () => sugerirCobertura(g) }, 'Sugerir como cobrir') : null) : null,
     linhas.length ? h('div', { class: 'tabela-rolagem' }, h('table', {}, h('thead', {}, cab), h('tbody', {}, linhas))) : h('p', { class: 'sutil' }, 'Nenhum colaborador cadastrado ainda. Use a aba Equipe.'));
 }
 
