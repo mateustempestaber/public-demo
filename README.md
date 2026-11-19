@@ -21,6 +21,29 @@ Para começar do zero: `https://mateustempestaber.github.io/public-demo/?reinici
 Os dados ficam no arquivo `dados.json` ao lado. Apague esse arquivo para começar do zero.
 Outra pessoa na mesma rede Wi-Fi pode abrir `http://IP-DO-SEU-PC:8787`.
 
+## Opção 3 — sua própria cópia (fork) para mexer à vontade
+
+Quer mudar alguma coisa e testar? Faça a **sua cópia**. Ela é só sua: o que você mudar nela **não altera** este repositório.
+
+1. Entre na sua conta do GitHub e clique em **Fork** (no alto desta página).
+2. Na tela que abrir, **desmarque** "Copy the main branch only" e clique em **Create fork**.
+3. Na sua cópia, vá em **Settings → Pages**, escolha a branch `homologacao`, a pasta `/ (root)` e clique em **Save**.
+4. Em 1–2 minutos sua versão fica em `https://SEU-USUARIO.github.io/public-demo/`.
+
+Na cópia dá para mudar a aparência e os textos (`index.html`, `style.css`, `app.js`). As regras da escala ficam no `app.wasm`, que é compilado.
+
+Quer sugerir algo para a versão oficial? Abra uma **Issue** aqui ou um **Pull Request** da sua cópia — o dono do repositório decide o que entra.
+
+## Opção 4 — servidor na nuvem (porta 8787)
+
+Para deixar o sistema no ar pela internet numa porta própria (`http://IP-DO-SERVIDOR:8787`), num servidor Linux (Ubuntu):
+
+```
+curl -fsSL https://raw.githubusercontent.com/mateustempestaber/public-demo/homologacao/servidor/instalar.sh | sudo sh
+```
+
+O script baixa o programa, cria um serviço que liga sozinho quando o servidor reinicia e libera a porta 8787 no firewall do servidor. Libere a porta 8787 também nas regras de entrada do painel da nuvem.
+
 ## Logins de teste
 
 Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou funcionário e abre a tela certa.
