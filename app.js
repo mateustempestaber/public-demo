@@ -58,6 +58,8 @@ async function api(url, corpo) {
   }
   return j;
 }
+// coloca filhos num elemento ignorando vazios (o navegador escreveria "null" na tela)
+const por = (el, ...xs) => el.replaceChildren(...xs.flat().filter(x => x != null && x !== false && x !== ''));
 const erroBox = e => h('div', { class: 'msg erro' }, e.msg, e.detalhes ? h('ul', {}, e.detalhes.map(d => h('li', {}, d))) : null);
 
 function abrirModal(...conteudo) {
@@ -106,6 +108,8 @@ function barraUsuario(nome, papel) {
 
 // ---------- entrada: só nome completo + CPF. O sistema descobre sozinho se a pessoa é gestor ou funcionário.
 function telaEntrada() {
+  abaGestor = 'escala'; mesGestor = ''; mesFunc = 0; verHorarios = false; // quem entrar começa sempre pela escala
+  fecharModal();
   usuario.replaceChildren();
   document.body.classList.add('entrada');
   const nome = h('input', { id: 'nome', placeholder: 'Nome completo', 'aria-label': 'Nome completo', autocomplete: 'username' });
@@ -318,15 +322,37 @@ function modalSalvarVersao() {
     } }, 'Salvar'), h('button', { onclick: fecharModal }, 'Cancelar')));
 }
 
-// ---------- um dia de uma pessoa: tipo do dia, troca de folga, horário e observação
+// ---------- um dia de uma pessoa: tipo do dia, troca de folga, horário e observação (igual ao site do Fred)
+const minDe = x => /^\d\d:\d\d$/.test(x || '') ? (+x.slice(0, 2)) * 60 + (+x.slice(3)) : null;
+const fmtH = m => m == null ? '—' : Math.floor(m / 60) + 'h' + (m % 60 ? String(m % 60).padStart(2, '0') : '');
+const fmtSaldo = m => m === 0 ? '0h' : (m > 0 ? '+' : '−') + fmtH(Math.abs(m));
+const brutoDe = (e, s) => { const a = minDe(e), b = minDe(s); if (a == null || b == null) return null; let d = b - a; if (d <= 0) d += 1440; return d; };
+// avisos da jornada (mesma regra do servidor e do site do Fred: só alertam, não bloqueiam)
+function avisosJornada(ent, sai, it, antes, depois) {
+  const av = [];
+  if (!ent && !sai) return av;
+  if (!ent || !sai) { av.push('Falta preencher ' + (ent ? 'a saída' : 'a entrada') + '.'); return av; }
+  const bruto = brutoDe(ent, sai), m = bruto - (it || 0);
+  if (ent === sai) av.push('Entrada e saída iguais.');
+  if (m > 600) av.push('Jornada de ' + fmtH(m) + ' no dia: acima de 10 h (regra geral da CLT, art. 59, admite no máximo 2 h extras por dia; conferir a convenção).');
+  if (bruto > 360 && (it || 0) < 60) av.push('Jornada acima de 6 h normalmente pede intervalo de ao menos 1 h (regra geral da CLT, art. 71; conferir se a convenção prevê outra regra).');
+  else if (bruto > 240 && bruto <= 360 && (it || 0) < 15) av.push('Jornada entre 4 h e 6 h normalmente pede intervalo de ao menos 15 min (CLT, art. 71).');
+  const gap = (e1, s1, e2) => { let f = minDe(s1); if (f < minDe(e1)) f += 1440; return 1440 + minDe(e2) - f; };
+  if (antes) { const g = gap(antes[0], antes[1], ent); if (g < 660) av.push('Só ' + fmtH(g) + ' entre a saída de ontem e a entrada de hoje (descanso entre jornadas: 11 h, CLT art. 66; conferir a convenção).'); }
+  if (depois) { const g = gap(ent, sai, depois[0]); if (g < 660) av.push('Só ' + fmtH(g) + ' entre a saída de hoje e a entrada de amanhã (descanso entre jornadas: 11 h, CLT art. 66; conferir a convenção).'); }
+  return av;
+}
+const listaAvisos = av => av.length ? h('div', { class: 'msg aviso' }, h('ul', {}, av.map(x => h('li', {}, x)))) : null;
+
 function modalDia(l, k, m) {
-  const d = m.dias[k], c = l.dias[k] || { t: 'T' };
+  const d = m.dias[k], c = l.dias[k] || { t: '' };
   if (!c.t) { toast('Esta pessoa ainda não tem escala nesse dia.', true); return; }
   const w = somaDias(d.data, -d.dia), par = l.pares[w];
   const podeTrocar = m.editaveis.includes(w) && d.data >= m.hoje && !!par;
   const motivoTroca = d.data < m.hoje ? 'Esse dia já passou.' : 'A folga só muda de dia na semana atual e na próxima.';
   const base = (c.t === 'F' || c.t === 'EX') ? 'F' : 'T';
-  let tipo = c.t, destino = null;
+  const trabalha = t => t === 'T' || t === 'EX' || t === 'TR';
+  let tipo = c.t, destino = null, leis = null;
   const opcoes = base === 'T'
     ? [['T', 'Trabalho'], ['F', 'Folga (troca de dia)'], ['FJ', 'Falta justificada'], ['FI', 'Falta injustificada']].concat(d.feriado ? [['TR', 'Trabalhou no feriado']] : [])
     : [['F', 'Folga'], ['T', 'Trabalho (troca de dia)'], ['EX', 'Dia extra (trabalhou na folga)']];
@@ -335,17 +361,39 @@ function modalDia(l, k, m) {
     if (t === 'FI' && d.data > m.hoje) return 'Falta injustificada só em dia que já chegou.';
     return null;
   };
+  // horário do dia vizinho (para o aviso das 11 horas)
+  const vizinho = j => { const v = l.dias[j]; if (!v || !v.h) return null; return [v.h.slice(0, 5), v.h.slice(-5)]; };
   const chips = h('div', { class: 'chips' });
   const areaTroca = h('div');
-  const motivo = h('select', { 'aria-label': 'Motivo da falta justificada' }, h('option', { value: '' }, 'Escolha o motivo...'), m.motivos.map(x => h('option', { value: x, selected: c.motivo === x }, x)));
-  const areaMotivo = h('div', {}, h('label', {}, 'Motivo'), motivo);
-  const ent = h('input', { type: 'time', value: c.manual ? c.h.slice(0, 5) : '', 'aria-label': 'Entrada' });
-  const sai = h('input', { type: 'time', value: c.manual ? c.h.slice(-5) : '', 'aria-label': 'Saída' });
-  const areaHora = h('div', {}, h('label', {}, 'Horário neste dia'), h('div', { class: 'grade2 hora' }, ent, sai),
-    h('p', { class: 'sutil pequeno' }, l.horario ? 'Vazio = horário padrão (' + l.horario + ').' : 'Opcional.'));
-  const obs = h('input', { value: c.obs || '', maxlength: '200', placeholder: 'Ex.: trocou com a Camila, chegou atrasado...', 'aria-label': 'Observação' });
+  const motivo = h('select', { 'aria-label': 'Motivo da falta justificada' }, h('option', { value: '' }, 'Selecione o motivo'), m.motivos.map(x => h('option', { value: x, selected: c.motivo === x }, x)));
+  const areaMotivo = h('div', {}, h('label', {}, 'Motivo da falta justificada'), motivo);
+  const ent = h('input', { type: 'time', value: c.ent || '', 'aria-label': 'Entrada' });
+  const sai = h('input', { type: 'time', value: c.sai || '', 'aria-label': 'Saída' });
+  const intv = h('input', { type: 'number', min: '0', max: '480', step: '5', inputmode: 'numeric', placeholder: 'minutos', value: c.int != null ? String(c.int) : '', 'aria-label': 'Intervalo em minutos' });
+  const resumoH = h('p', { class: 'sutil pequeno' });
+  const avisos = h('div');
+  const usarPadrao = l.hEnt ? h('button', { type: 'button', class: 'pq', onclick: () => { ent.value = l.hEnt; sai.value = l.hSai; intv.value = l.hInt != null ? String(l.hInt) : ''; analisar(); } },
+    'Usar horário padrão (' + l.horario + ')') : null;
+  const areaHora = h('div', {}, h('h3', { class: 'sub' }, 'Horário trabalhado'),
+    h('div', { class: 'grade3' }, h('div', {}, h('label', {}, 'Entrada'), ent), h('div', {}, h('label', {}, 'Saída'), sai), h('div', {}, h('label', {}, 'Intervalo (min)'), intv)),
+    resumoH, usarPadrao ? h('div', { class: 'acoes' }, usarPadrao) : null,
+    h('p', { class: 'sutil pequeno' }, l.horario ? 'Em branco = horário padrão (' + l.horario + ').' : 'Opcional.'));
+  const obs = h('textarea', { rows: '3', maxlength: '300', placeholder: 'Observação (opcional): o que aconteceu, quem autorizou, troca combinada...', 'aria-label': 'Observação' });
+  obs.value = c.obs || '';
   const msg = h('div');
   const salvar = h('button', { class: 'cheio' }, 'Salvar');
+  const lerInt = () => intv.value === '' ? null : Math.max(0, parseInt(intv.value, 10) || 0);
+
+  function analisar() {
+    resumoH.textContent = '';
+    if (!trabalha(tipo)) { avisos.replaceChildren(); return; }
+    const e1 = ent.value || (!sai.value ? l.hEnt : ''), s1 = sai.value || (!ent.value ? l.hSai : '');
+    const it = ent.value || sai.value ? lerInt() : (l.hInt != null ? l.hInt : null);
+    const b = brutoDe(e1, s1);
+    if (b != null) resumoH.textContent = 'Trabalhado: ' + fmtH(b - (it || 0)) + ' • previsto: 8h • saldo do dia: ' + fmtSaldo(b - (it || 0) - 480);
+    por(avisos, listaAvisos(avisosJornada(ent.value || (sai.value ? '' : e1), sai.value || (ent.value ? '' : s1), it, vizinho(k - 1), vizinho(k + 1))));
+  }
+  [ent, sai, intv].forEach(x => { x.addEventListener('input', analisar); x.addEventListener('change', analisar); });
 
   const desenhar = () => {
     chips.replaceChildren(...opcoes.map(([t, rot]) => {
@@ -359,20 +407,25 @@ function modalDia(l, k, m) {
       const alvos = base === 'T'
         ? par.filter(x => somaDias(w, x) >= m.hoje)
         : [0, 1, 2, 3, 4, 5, 6].filter(x => !par.includes(x) && somaDias(w, x) >= m.hoje);
-      areaTroca.append(h('label', {}, base === 'T' ? 'Qual folga desta semana vira dia de trabalho?' : 'Para qual dia vai esta folga?'),
-        alvos.length ? h('div', { class: 'chips' }, alvos.map(x => h('button', { type: 'button', class: 'chip-dia' + (destino === x ? ' sel' : ''),
+      if (!leis) { api('/api/gestor/opcoes?id=' + l.id + '&semana=' + w).then(o => { leis = o; desenhar(); }).catch(e => { leis = []; msg.replaceChildren(erroBox(e)); }); }
+      const parNovo = x => (base === 'T' ? [d.dia, par.find(y => y !== x)] : [x, par.find(y => y !== d.dia)]).sort((p, q) => p - q);
+      const motivoLei = x => { const n = parNovo(x), o = (leis || []).find(o => o.par[0] === n[0] && o.par[1] === n[1]); return o && !o.ok ? o.motivo : null; };
+      const proibidos = alvos.map(x => [x, motivoLei(x)]).filter(([, mo]) => mo);
+      if (destino != null && motivoLei(destino)) destino = null;
+      por(areaTroca, h('label', {}, base === 'T' ? 'Qual folga desta semana vira dia de trabalho?' : 'Para qual dia vai esta folga?'),
+        !leis ? h('p', { class: 'sutil' }, 'Conferindo o que a lei permite...') :
+        alvos.length ? h('div', { class: 'chips' }, alvos.map(x => h('button', { type: 'button', class: 'chip-dia' + (destino === x ? ' sel' : ''), disabled: !!motivoLei(x), title: motivoLei(x) || '',
           onclick: () => { destino = x; desenhar(); } }, DIAS[x] + ' ' + dataBR(somaDias(w, x)))))
-          : h('p', { class: 'sutil' }, 'Não há dia disponível nesta semana.'));
+          : h('p', { class: 'sutil' }, 'Não há dia disponível nesta semana.'),
+        leis && proibidos.length ? h('ul', { class: 'sutil pequeno lista-proibidos' }, proibidos.map(([x, mo]) => h('li', {}, DIAS[x] + ' ' + dataBR(somaDias(w, x)) + ': ' + mo.replace(/\.$/, '') + '.'))) : null);
     }
     areaMotivo.hidden = tipo !== 'FJ';
-    areaHora.hidden = !(tipo === 'T' || tipo === 'EX' || tipo === 'TR');
+    areaHora.hidden = !trabalha(tipo);
     salvar.disabled = troca && destino == null;
+    analisar();
   };
 
-  const enviar = async remanejo => {
-    if ((ent.value === '') !== (sai.value === '')) { msg.replaceChildren(erroBox({ msg: 'Preencha a entrada e a saída, ou deixe as duas vazias.' })); return; }
-    if (tipo === 'FJ' && !motivo.value) { msg.replaceChildren(erroBox({ msg: 'Escolha o motivo da falta justificada.' })); return; }
-    const troca = tipo !== base && (tipo === 'F' || tipo === 'T');
+  const gravar = async (corpo, remanejo, troca) => {
     salvar.disabled = true;
     try {
       if (troca) {
@@ -383,43 +436,57 @@ function modalDia(l, k, m) {
           if (e.codigo === 'cobertura' && !remanejo) { // abriria furo: mostra quem pode cobrir e pede a aprovação do gestor
             const pl = await api('/api/gestor/previa', { id: l.id, semana: w, a, b }).catch(() => null);
             if (pl) {
-              msg.replaceChildren(blocoPlano(pl, 'Esta troca deixaria furo:'),
-                pl.resolve ? h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => enviar(remanejoDe(pl)) }, 'Salvar com este remanejamento')) : null);
+              por(msg, blocoPlano(pl, 'Esta troca deixaria furo:'),
+                pl.resolve ? h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => gravar(corpo, remanejoDe(pl), true) }, 'Salvar com este remanejamento')) : null);
               return;
             }
           }
           throw e;
         }
       }
-      const s = (tipo === 'T' || tipo === 'F') ? '' : tipo;
-      const r = await api('/api/gestor/dia', { id: l.id, data: d.data, s, motivo: motivo.value, ent: ent.value, sai: sai.value, obs: obs.value });
+      const r = await api('/api/gestor/dia', corpo);
       fecharModal();
-      toast(r.aviso || (troca ? 'Folga trocada de dia.' : 'Dia salvo.'), !!r.aviso);
+      const av = r.avisos || [];
+      toast(av.length ? 'Dia salvo. ' + av.join(' ') : (troca ? 'Folga trocada de dia.' : 'Dia salvo.'), av.length > 0);
       painelGestor();
     } catch (e) { msg.replaceChildren(erroBox(e)); }
-    finally { salvar.disabled = false; desenhar(); }
+    finally { salvar.disabled = false; }
   };
-  salvar.addEventListener('click', () => enviar(null));
+  salvar.addEventListener('click', () => {
+    if ((ent.value === '') !== (sai.value === '')) { msg.replaceChildren(erroBox({ msg: 'Falta preencher ' + (ent.value ? 'a saída' : 'a entrada') + '.' })); return; }
+    if (tipo === 'FJ' && !motivo.value) { msg.replaceChildren(erroBox({ msg: 'Selecione o motivo da falta justificada.' })); return; }
+    const troca = tipo !== base && (tipo === 'F' || tipo === 'T');
+    const s = (tipo === 'T' || tipo === 'F') ? '' : tipo;
+    gravar({ id: l.id, data: d.data, s, motivo: motivo.value, ent: ent.value, sai: sai.value, int: ent.value ? lerInt() : null, obs: obs.value }, null, troca);
+  });
+  const temAlgo = c.t !== base || c.ent || c.obs;
+  const voltarPadrao = () => confirmar('Voltar este dia ao padrão?', 'Falta, dia extra, horário e observação deste dia serão apagados. A folga continua onde está.', 'Voltar ao padrão',
+    () => gravar({ id: l.id, data: d.data, s: '' }, null, false), true);
   desenhar();
   abrirModal(h('h2', { class: 'neon-sm' }, l.nome),
-    h('p', { class: 'sutil' }, DIAS_L[d.dia] + ', ' + dataBRc(d.data) + (d.feriado ? ' • feriado: ' + d.feriado : '') + (d.data >= m.previsao ? ' • previsão' : '') + '. Folgas da semana: ' + parTxt(par) + '.'),
-    h('label', {}, 'O que vale neste dia?'), chips, areaTroca, areaMotivo, areaHora,
-    h('label', {}, 'Observação'), obs, msg,
-    h('div', { class: 'acoes' }, salvar, h('button', { onclick: fecharModal }, 'Cancelar')));
+    h('p', { class: 'sutil' }, DIAS_L[d.dia] + ', ' + dataBRc(d.data) + (d.feriado ? ' • feriado: ' + d.feriado : '') + ' • padrão: ' + (base === 'F' ? 'folga' : 'trabalho') + (d.data >= m.previsao ? ' (previsão)' : '') + '. Folgas da semana: ' + parTxt(par) + '.'),
+    c.por ? h('p', { class: 'sutil pequeno' }, 'Última alteração: ' + c.por + ' em ' + c.em) : null,
+    h('h3', { class: 'sub' }, 'Tipo do dia'), chips, areaTroca, areaMotivo, areaHora,
+    h('label', {}, 'Observações'), obs, avisos, msg,
+    h('div', { class: 'acoes' }, salvar, h('button', { onclick: fecharModal }, 'Cancelar'),
+      temAlgo ? h('button', { class: 'perigo', onclick: voltarPadrao }, 'Voltar ao padrão') : null));
 }
 
 // ---------- equipe
 const campoHora = (valor, rot) => h('input', { type: 'time', value: valor || '', 'aria-label': rot });
+const campoInt = valor => h('input', { type: 'number', min: '0', max: '480', step: '5', placeholder: 'min', value: valor != null ? String(valor) : '', 'aria-label': 'Intervalo em minutos' });
+const intDe = x => x.value === '' ? null : Math.max(0, parseInt(x.value, 10) || 0);
+const horarioTxt = f => f.hEnt ? f.hEnt + '–' + f.hSai + (f.hInt != null ? ' (int. ' + f.hInt + ' min)' : '') : '—';
 function gEquipe(g) {
   const nome = h('input', { placeholder: 'Nome completo' });
   const cpf = h('input', { inputmode: 'numeric', maxlength: '14', placeholder: '000.000.000-00', autocomplete: 'off' });
   const fn = h('select', {}, g.ordem.map(f => h('option', { value: f }, g.funcoesInfo[f].nome)));
   const dom = h('select', {}, h('option', { value: '3' }, 'Homem: folga 1 domingo a cada 3 semanas'), h('option', { value: '2' }, 'Mulher: folga 1 domingo a cada 2 semanas'));
-  const ent = campoHora('', 'Entrada'), sai = campoHora('', 'Saída');
+  const ent = campoHora('15:00', 'Entrada'), sai = campoHora('00:00', 'Saída'), intv = campoInt(60);
   const msg = h('div');
   const cadastrar = async () => {
     try {
-      const r = await api('/api/gestor/funcionarios', { nome: nome.value, cpf: cpf.value, funcao: fn.value, domingoSemanas: Number(dom.value), hEnt: ent.value, hSai: sai.value });
+      const r = await api('/api/gestor/funcionarios', { nome: nome.value, cpf: cpf.value, funcao: fn.value, domingoSemanas: Number(dom.value), hEnt: ent.value, hSai: sai.value, hInt: ent.value ? intDe(intv) : null });
       await painelGestor(); toast(r.nome + ' cadastrado. Ele entra com o nome completo e o CPF.');
     } catch (e) { msg.replaceChildren(erroBox(e)); }
   };
@@ -431,14 +498,14 @@ function gEquipe(g) {
     const n = h('input', { value: f.nome, maxlength: '60' });
     const fu = h('select', {}, g.ordem.map(x => h('option', { value: x, selected: x === f.funcao }, g.funcoesInfo[x].nome)));
     const dm = h('select', {}, h('option', { value: '3', selected: f.domingoSemanas === 3 }, 'Folga 1 domingo a cada 3 semanas'), h('option', { value: '2', selected: f.domingoSemanas === 2 }, 'Folga 1 domingo a cada 2 semanas'));
-    const e1 = campoHora(f.hEnt, 'Entrada'), s1 = campoHora(f.hSai, 'Saída');
+    const e1 = campoHora(f.hEnt, 'Entrada'), s1 = campoHora(f.hSai, 'Saída'), i1 = campoInt(f.hInt);
     const m2 = h('div');
     abrirModal(h('h2', { class: 'neon-sm' }, 'Editar ' + f.nome),
       h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Nome completo'), n), h('div', {}, h('label', {}, 'Função'), fu),
-        h('div', {}, h('label', {}, 'Regra de domingo'), dm), h('div', {}, h('label', {}, 'Horário padrão (entrada e saída)'), h('div', { class: 'grade2 hora' }, e1, s1))),
+        h('div', {}, h('label', {}, 'Regra de domingo'), dm), h('div', {}, h('label', {}, 'Horário padrão (entrada, saída e intervalo)'), h('div', { class: 'grade3' }, e1, s1, i1))),
       h('p', { class: 'sutil pequeno' }, 'O CPF não muda aqui (é o login dele). Para trocar o CPF, remova e cadastre de novo.'), m2,
       h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: async () => {
-        try { await api('/api/gestor/funcionarios/editar', { id: f.id, nome: n.value, funcao: fu.value, domingoSemanas: Number(dm.value), hEnt: e1.value, hSai: s1.value }); fecharModal(); toast('Dados salvos.'); painelGestor(); }
+        try { await api('/api/gestor/funcionarios/editar', { id: f.id, nome: n.value, funcao: fu.value, domingoSemanas: Number(dm.value), hEnt: e1.value, hSai: s1.value, hInt: e1.value ? intDe(i1) : null }); fecharModal(); toast('Dados salvos.'); painelGestor(); }
         catch (e) { m2.replaceChildren(erroBox(e)); }
       } }, 'Salvar'), h('button', { onclick: fecharModal }, 'Cancelar')));
   };
@@ -448,7 +515,7 @@ function gEquipe(g) {
   return h('div', {},
     h('div', { class: 'card' }, h('h2', {}, 'Cadastrar colaborador'),
       h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Nome'), nome), h('div', {}, h('label', {}, 'CPF (é o login dele)'), cpf), h('div', {}, h('label', {}, 'Função'), fn),
-        h('div', {}, h('label', {}, 'Regra de domingo'), dom), h('div', {}, h('label', {}, 'Horário padrão (opcional)'), h('div', { class: 'grade2 hora' }, ent, sai))),
+        h('div', {}, h('label', {}, 'Regra de domingo'), dom), h('div', {}, h('label', {}, 'Horário padrão (entrada, saída e intervalo)'), h('div', { class: 'grade3' }, ent, sai, intv))),
       msg, h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: cadastrar }, 'Cadastrar')),
       h('p', { class: 'sutil pequeno' }, 'O colaborador entra com o nome completo e o CPF. O sistema guarda só um código irreversível do CPF (e os 2 últimos dígitos). As folgas são encaixadas sem mexer nas dos outros.')),
     h('div', { class: 'card' }, h('h2', {}, 'Equipe (' + g.equipe.length + ')'),
@@ -456,7 +523,7 @@ function gEquipe(g) {
       h('div', { class: 'tabela-rolagem' }, h('table', {},
         h('thead', {}, h('tr', {}, ['Nome', 'Função', 'CPF', 'Domingo', 'Horário', ''].map(t => h('th', {}, t)))),
         h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome, f.demo ? h('span', { class: 'badge' }, 'demo') : null), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.cpf),
-          h('td', {}, 'a cada ' + f.domingoSemanas + ' sem.'), h('td', {}, f.hEnt ? f.hEnt + '–' + f.hSai : '—'),
+          h('td', {}, 'a cada ' + f.domingoSemanas + ' sem.'), h('td', {}, horarioTxt(f)),
           h('td', { class: 'acoes-linha' }, h('button', { class: 'pq', onclick: () => editar(f) }, 'Editar'), h('button', { class: 'pq', onclick: () => revogar(f) }, 'Encerrar sessões'), h('button', { class: 'perigo pq', onclick: () => remover(f) }, 'Remover'))))))))
   );
 }

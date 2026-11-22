@@ -86,7 +86,8 @@ Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou
 - **Funcionário:** calendário do mês com folgas, faltas e dias extras; o horário dele; "Precisa mudar uma folga? Fale com o gestor."
 - **Gestor → Escala do mês:** tabela com todos e todos os dias. Toque num dia para marcar **folga (troca de dia)**, **falta justificada** (com motivo), **falta injustificada**, **dia extra**, **trabalhou no feriado**, **horário** e **observação**. "Mostrar horários" mostra a entrada/saída de cada dia. Embaixo, o **resumo do mês** por pessoa.
 - **Botões da escala:** Imprimir/PDF (uma folha A4), **Baixar planilha** (abre no Excel) e **Salvar versão**.
-- **O sistema deve recusar:** troca de folga que quebra a lei (mais de 6 dias seguidos, domingo), jornada acima de 10 horas, falta injustificada no futuro. Se a troca deixar falta de gente, mostra quem pode cobrir e **ninguém muda sem o gestor aprovar**. Menos de 11 horas de descanso entre um dia e outro gera aviso.
+- **O sistema deve recusar:** troca de folga que quebra a lei (mais de 6 dias seguidos, domingo; esses dias aparecem riscados com o motivo) e falta injustificada no futuro. Se a troca deixar falta de gente, mostra quem pode cobrir e **ninguém muda sem o gestor aprovar**.
+- **Avisos (igual ao site do Fred, não bloqueiam):** jornada acima de 10 h, intervalo curto e menos de 11 h de descanso entre um dia e outro.
 - **Equipe:** cadastrar e **editar** (função, regra de domingo, horário padrão).
 - **Feriados e regras:** cadastrar feriado municipal (ex.: aniversário de Araraquara) e ver as regras da lei.
 - **Auditoria:** quem está em regra na semana; baixar em planilha.

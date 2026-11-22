@@ -241,4 +241,12 @@ input[type=date]{color-scheme:dark}
 }
 input[type=color]{width:90px;height:44px;padding:4px;cursor:pointer}
 .grade-arquivo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
-.grade-arquivo input{flex:1 1 220px;width:auto}
+.grade-arquivo input{flex:1 1 200px;width:auto;min-width:0;max-width:100%}
+.grade3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.grade3 label{margin-top:0}
+h3.sub{margin:14px 0 4px;font-size:.95rem;color:var(--txt)}
+.modal textarea{width:100%;resize:vertical}
+.msg.aviso{border-color:var(--aviso);color:var(--txt)}
+.msg.aviso li{margin:2px 0}
+.chip-dia:disabled{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+.lista-proibidos{margin:4px 0 0;padding-left:18px}
