@@ -11,6 +11,7 @@ let abaGestor = 'escala';
 let mesGestor = '';
 let mesFunc = 0; // 0 = mês atual, 1 = próximo mês
 let verHorarios = false;
+let verResumo = false;
 let MARCA = null;
 
 // Tudo é montado com textContent (nunca innerHTML com dados), então nome/motivo digitados não executam código.
@@ -108,7 +109,7 @@ function barraUsuario(nome, papel) {
 
 // ---------- entrada: só nome completo + CPF. O sistema descobre sozinho se a pessoa é gestor ou funcionário.
 function telaEntrada() {
-  abaGestor = 'escala'; mesGestor = ''; mesFunc = 0; verHorarios = false; // quem entrar começa sempre pela escala
+  abaGestor = 'escala'; mesGestor = ''; mesFunc = 0; verHorarios = false; verResumo = false; // quem entrar começa sempre pela escala
   fecharModal();
   usuario.replaceChildren();
   document.body.classList.add('entrada');
@@ -152,16 +153,14 @@ async function iniciar() {
 function legendaFunc() {
   return h('div', { class: 'legenda', 'aria-label': 'Legenda' },
     h('span', {}, h('i', { class: 'leg-folga' }), 'Folga'),
-    h('span', {}, h('i', { class: 'leg-prev' }), 'Folga prevista'),
-    h('span', {}, h('i', { class: 'leg-trab' }), 'Trabalho'),
-    h('span', {}, h('i', { class: 'leg-fj' }), 'Falta justificada'),
-    h('span', {}, h('i', { class: 'leg-fi' }), 'Falta'),
-    h('span', {}, h('i', { class: 'leg-ex' }), 'Dia extra'),
+    h('span', {}, h('i', { class: 'leg-prev' }), 'Folga que ainda pode mudar'),
+    h('span', {}, h('i', { class: 'leg-fi' }), 'Faltou'),
+    h('span', {}, h('i', { class: 'leg-ex' }), 'Extra'),
     h('span', {}, h('i', { class: 'leg-hoje' }), 'Hoje'),
     h('span', {}, h('i', { class: 'leg-fer' }), 'Feriado'));
 }
 
-const ROT_CAL = { FJ: 'falta just.', FI: 'falta', EX: 'extra', TR: 'feriado trab.' };
+const ROT_CAL = { FJ: 'faltou', FI: 'faltou', EX: 'extra', TR: 'feriado' };
 function calendarioMes(cal, mes) {
   const semanas = [];
   for (let i = 0; i < cal.length; i += 7) {
@@ -196,8 +195,7 @@ async function painelFuncionario() {
   app.replaceChildren(
     h('div', { class: 'card' },
       h('h2', {}, p.icone + ' ' + p.nome + ' • ' + p.funcaoNome),
-      navMes, calendarioMes(p.calendario, mes), legendaFunc(),
-      h('p', { class: 'sutil pequeno' }, 'Depois da próxima semana a escala é uma previsão e ainda pode mudar.')),
+      navMes, calendarioMes(p.calendario, mes), legendaFunc()),
     h('div', { class: 'card' },
       h('h2', {}, 'Suas folgas'),
       p.semanas.map(sem => h('div', { class: 'linha-semana' },
@@ -207,17 +205,27 @@ async function painelFuncionario() {
       h('p', { class: 'sutil pequeno' }, 'Precisa mudar uma folga? Fale com o gestor.')));
 }
 
-// ---------- gestor
+// ---------- gestor: só 3 abas. O que é usado de vez em quando fica em "Mais".
+const MAIS = [
+  ['cobertura', 'Pessoas por dia', 'Quantas pessoas de cada função precisam trabalhar em cada dia.'],
+  ['regras', 'Feriados', 'Cadastrar os feriados da cidade e ver as regras da lei.'],
+  ['audit', 'Conferir a lei', 'Ver se alguém está fora da regra nesta semana.'],
+  ['backup', 'Cópia de segurança e histórico', 'Guardar ou voltar uma cópia e ver tudo o que foi mudado.'],
+  ['empresa', 'Empresa', 'Nome, logo e cor do sistema.']];
 async function painelGestor() {
   let g;
   try { g = await api('/api/gestor/painel'); } catch (e) { return; }
   const eu = await api('/api/eu').catch(() => ({ nome: 'Gestor' }));
   barraUsuario(eu.nome || 'Gestor', 'gestor');
-  const abas = [['escala', 'Escala do mês'], ['equipe', 'Equipe'], ['cobertura', 'Cobertura mínima'], ['regras', 'Feriados e regras'],
-    ['audit', 'Auditoria'], ['empresa', 'Empresa'], ['backup', 'Backup e histórico']];
-  const nav = h('div', { class: 'abas' }, abas.map(([k, t]) => h('button', { class: abaGestor === k ? 'ativa' : '', onclick: () => { abaGestor = k; painelGestor(); } }, t)));
+  const naMais = abaGestor === 'mais' || MAIS.some(([k]) => k === abaGestor);
+  const abas = [['escala', 'Escala'], ['equipe', 'Equipe'], ['mais', 'Mais']];
+  const nav = h('div', { class: 'abas' }, abas.map(([k, t]) => h('button', { class: (abaGestor === k || (k === 'mais' && naMais)) ? 'ativa' : '', onclick: () => { abaGestor = k; painelGestor(); } }, t)));
   if (abaGestor === 'escala') { app.replaceChildren(nav, h('div', { class: 'card' }, h('p', { class: 'sutil' }, 'Carregando a escala...'))); return gEscalaMes(nav); }
-  app.replaceChildren(nav, { equipe: gEquipe, cobertura: gCobertura, regras: gRegras, audit: gAudit, empresa: gEmpresa, backup: gBackup }[abaGestor](g));
+  if (abaGestor === 'equipe') return app.replaceChildren(nav, gEquipe(g));
+  if (abaGestor === 'mais') return app.replaceChildren(nav, h('div', { class: 'menu-mais' }, MAIS.map(([k, t, d]) =>
+    h('button', { class: 'item-mais', onclick: () => { abaGestor = k; painelGestor(); } }, h('b', {}, t), h('span', {}, d), h('i', { 'aria-hidden': 'true' }, '›')))));
+  const voltar = h('button', { class: 'pq voltar', onclick: () => { abaGestor = 'mais'; painelGestor(); } }, '‹ Voltar');
+  app.replaceChildren(nav, voltar, { cobertura: gCobertura, regras: gRegras, audit: gAudit, empresa: gEmpresa, backup: gBackup }[abaGestor](g));
 }
 
 // lista do remanejamento sugerido: só vale se o gestor aprovar
@@ -227,9 +235,9 @@ function blocoPlano(pl, titulo) {
   if (!pl.furos.length && !pl.sugestoes.length) return null;
   return h('div', { class: 'msg' + (pl.resolve ? '' : ' erro') },
     pl.furos.length ? h('div', {}, h('b', {}, titulo), h('ul', {}, pl.furos.map(f => h('li', {}, f)))) : null,
-    pl.sugestoes.length ? h('div', {}, h('b', {}, 'Para não ficar furo, quem pode trocar (só muda se você aprovar):'),
+    pl.sugestoes.length ? h('div', {}, h('b', {}, 'Quem pode cobrir (só muda se você confirmar):'),
       h('ul', {}, pl.sugestoes.map(s => h('li', {}, s.nome + ': ' + s.texto)))) : null,
-    pl.resolve ? null : h('p', {}, 'Não achei como cobrir sem quebrar a lei. Escolha outro dia ou ajuste antes outras folgas.'));
+    pl.resolve ? null : h('p', {}, 'Ninguém pode cobrir sem quebrar a lei. Escolha outro dia.'));
 }
 const remanejoDe = pl => (pl && pl.sugestoes ? pl.sugestoes : []).map(s => ({ id: s.id, a: s.para[0], b: s.para[1] }));
 
@@ -267,37 +275,47 @@ async function gEscalaMes(nav) {
         return td;
       }),
       h('td', { class: 'tot' }, String(l.total)))));
-    corpo.push(h('tr', { class: 'cob' }, h('td', { class: 'col-nome' }, 'Trabalhando / mínimo'),
+    corpo.push(h('tr', { class: 'cob' }, h('td', { class: 'col-nome' }, 'Trabalhando / precisa'),
       m.dias.map((d, k) => { const t = m.trabalhando[f][k], mi = m.minimos[f][k]; return h('td', { class: t < mi ? 'def' : '', title: t < mi ? 'Falta gente neste dia' : '' }, t + '/' + mi); }), h('td')));
   });
-  const ckHor = h('input', { type: 'checkbox', checked: verHorarios, onchange: e => { verHorarios = e.target.checked; painelGestor(); } });
+  // resumo de hoje, em uma frase
+  const kh = m.dias.findIndex(d => d.hoje);
+  let frase = null;
+  if (kh >= 0) {
+    const trab = m.ordem.reduce((t, f) => t + m.trabalhando[f][kh], 0);
+    const folga = m.linhas.filter(l => l.dias[kh] && l.dias[kh].t === 'F').length;
+    const faltas = m.linhas.filter(l => l.dias[kh] && (l.dias[kh].t === 'FJ' || l.dias[kh].t === 'FI')).length;
+    const faltaGente = m.ordem.filter(f => m.trabalhando[f][kh] < m.minimos[f][kh]).map(f => m.funcoesInfo[f].plural);
+    frase = h('div', { class: 'hoje-frase nao-imprime' + (faltaGente.length ? ' ruim' : '') },
+      h('b', {}, 'Hoje: '), trab + ' trabalhando, ' + folga + ' de folga' + (faltas ? ', ' + faltas + (faltas === 1 ? ' falta' : ' faltas') : '') + '. ',
+      faltaGente.length ? h('b', {}, 'Falta gente: ' + faltaGente.join(', ') + '.') : 'Tudo certo.');
+  }
+  const opcoes = h('details', { class: 'mais-opcoes nao-imprime' }, h('summary', {}, 'Mais opções'),
+    h('div', { class: 'acoes' },
+      h('button', { onclick: () => { verHorarios = !verHorarios; painelGestor(); } }, verHorarios ? 'Esconder horários' : 'Mostrar horários'),
+      h('button', { onclick: () => { verResumo = !verResumo; painelGestor(); } }, verResumo ? 'Esconder resumo do mês' : 'Ver resumo do mês'),
+      h('button', { onclick: () => baixarEscala(m, titulo) }, 'Baixar planilha (Excel)'),
+      h('button', { onclick: modalSalvarVersao }, 'Salvar uma cópia da escala')));
+  if (verHorarios || verResumo) opcoes.open = true;
   const card = h('div', { class: 'card escala-mes' + (verHorarios ? ' com-horas' : '') },
     h('div', { class: 'so-imprime cab-impressao' }, h('img', { src: logoSrc(), alt: '' }),
-      h('div', {}, h('b', {}, 'Escala de folgas • ' + titulo), h('small', {}, (MARCA ? MARCA.nome + ' • ' : '') + 'F = folga, FJ = falta justificada, FI = falta, EX = dia extra, TR = trabalhou no feriado. Gerada em ' + dataBRc(m.hoje) + '.'))),
-    h('div', { class: 'topo-escala nao-imprime' }, h('h2', {}, 'Escala do mês'),
-      h('div', { class: 'acoes' },
-        h('button', { class: 'cheio', onclick: () => window.print() }, 'Imprimir ou salvar PDF'),
-        h('button', { onclick: () => baixarEscala(m, titulo) }, 'Baixar planilha'),
-        h('button', { onclick: modalSalvarVersao }, 'Salvar versão'))),
-    navMes,
-    m.furos ? h('div', { class: 'msg erro nao-imprime' }, h('b', {}, 'Falta gente em ' + m.furos + (m.furos === 1 ? ' dia' : ' dias') + ' deste mês. '), 'Veja os números em vermelho na linha "Trabalhando / mínimo" e toque num dia para ajustar.') : null,
-    h('div', { class: 'barra-escala nao-imprime' },
-      h('div', { class: 'legenda' },
-        h('span', {}, h('i', { class: 'leg-folga' }), 'F folga'), h('span', {}, h('i', { class: 'leg-fj' }), 'FJ falta justificada'),
-        h('span', {}, h('i', { class: 'leg-fi' }), 'FI falta'), h('span', {}, h('i', { class: 'leg-ex' }), 'EX dia extra'),
-        h('span', {}, h('i', { class: 'leg-tr' }), 'TR trabalhou no feriado'), h('span', {}, h('i', { class: 'leg-obs' }), 'tem observação'),
-        h('span', {}, h('i', { class: 'leg-prev' }), 'previsão'), h('span', {}, h('i', { class: 'leg-hoje' }), 'hoje')),
-      h('label', { class: 'check' }, ckHor, 'Mostrar horários')),
-    h('p', { class: 'sutil pequeno nao-imprime' }, 'Toque em qualquer dia para marcar folga, falta, dia extra, horário ou observação. O sistema não deixa quebrar a lei nem deixar furo.'),
+      h('div', {}, h('b', {}, 'Escala de folgas • ' + titulo), h('small', {}, (MARCA ? MARCA.nome + ' • ' : '') + 'F = folga, FJ = falta justificada, FI = falta, EX = dia extra, TR = trabalhou no feriado. Gerada em ' + dataBRc(m.hoje) + '. Não substitui o controle de ponto.'))),
+    h('div', { class: 'topo-escala nao-imprime' }, navMes, h('button', { class: 'cheio', onclick: () => window.print() }, 'Imprimir')),
+    frase,
+    m.furos ? h('div', { class: 'msg erro nao-imprime' }, 'Falta gente em ' + m.furos + (m.furos === 1 ? ' dia' : ' dias') + ' deste mês (números em vermelho).') : null,
+    h('div', { class: 'legenda nao-imprime' },
+      h('span', {}, h('i', { class: 'leg-folga' }), 'Folga'), h('span', {}, h('i', { class: 'leg-fi' }), 'Faltou'),
+      h('span', {}, h('i', { class: 'leg-ex' }), 'Extra'), h('span', {}, h('i', { class: 'leg-hoje' }), 'Hoje'),
+      h('span', { class: 'dica' }, 'Toque num dia para mudar')),
     h('div', { class: 'tabela-rolagem' }, h('table', { class: 'tmes' }, h('thead', {}, cab), h('tbody', {}, corpo))),
-    h('p', { class: 'sutil pequeno rodape-mes' }, m.feriados.length ? 'Feriados do mês: ' + m.feriados.map(x => dataBR(x.data) + ' ' + x.nome).join(' • ') + '.' : 'Sem feriados neste mês.',
-      ' Esta escala organiza as folgas e não substitui o controle de ponto oficial.'));
-  const resumo = h('div', { class: 'card resumo-mes' }, h('h2', {}, 'Resumo de ' + titulo),
+    m.feriados.length ? h('p', { class: 'sutil pequeno rodape-mes' }, 'Feriados: ' + m.feriados.map(x => dataBR(x.data) + ' ' + x.nome).join(' • ') + '.') : null,
+    opcoes);
+  const resumo = verResumo ? h('div', { class: 'card resumo-mes' }, h('h2', {}, 'Resumo de ' + titulo),
     h('div', { class: 'tabela-rolagem' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Colaborador', 'Função', 'Horário padrão', 'Trabalho', 'Folga', 'F. just.', 'Falta', 'Extra', 'Feriado trab.'].map(t => h('th', {}, t)))),
-      h('tbody', {}, m.linhas.map(l => h('tr', {}, h('td', {}, l.nome), h('td', {}, m.funcoesInfo[l.funcao].nome), h('td', {}, l.horario || '—'),
-        ['T', 'F', 'FJ', 'FI', 'EX', 'TR'].map(t => h('td', { class: t === 'FI' && l.resumo[t] ? 'def' : '' }, String(l.resumo[t])))))))));
-  app.replaceChildren(nav, card, resumo);
+      h('thead', {}, h('tr', {}, ['Nome', 'Trabalhou', 'Folgas', 'Faltas com atestado', 'Faltas', 'Extras'].map(t => h('th', {}, t)))),
+      h('tbody', {}, m.linhas.map(l => h('tr', {}, h('td', {}, l.nome), h('td', {}, String(l.resumo.T + l.resumo.TR)),
+        ['F', 'FJ', 'FI', 'EX'].map(t => h('td', { class: t === 'FI' && l.resumo[t] ? 'def' : '' }, String(l.resumo[t]))))))))) : null;
+  por(app, nav, card, resumo);
 }
 
 function baixarEscala(m, titulo) {
@@ -306,18 +324,18 @@ function baixarEscala(m, titulo) {
     ...l.dias.map(c => [SIG[c.t] || 'T', c.h].filter(Boolean).join(' ')), l.resumo.F, l.resumo.FJ, l.resumo.FI, l.resumo.EX, l.resumo.TR])));
   linhas.push([], ['T = trabalho, F = folga, FJ = falta justificada, FI = falta, EX = dia extra, TR = trabalhou no feriado']);
   baixarArquivo('escala-' + m.mes + '.csv', csv(linhas), 'text/csv;charset=utf-8');
-  toast('Planilha baixada. Ela abre no Excel ou no Google Planilhas.');
+  toast('Planilha baixada.');
 }
 
 function modalSalvarVersao() {
   const hoje = new Date();
-  const nome = h('input', { value: 'Escala de ' + String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0'), maxlength: '50', 'aria-label': 'Nome da versão' });
+  const nome = h('input', { value: 'Escala de ' + String(hoje.getDate()).padStart(2, '0') + '/' + String(hoje.getMonth() + 1).padStart(2, '0'), maxlength: '50', 'aria-label': 'Nome da cópia' });
   const msg = h('div');
-  abrirModal(h('h2', { class: 'neon-sm' }, 'Salvar versão da escala'),
-    h('p', { class: 'sutil' }, 'Guarda uma cópia da escala como está agora. Se depois algo der errado, você volta para ela na aba "Backup e histórico".'),
+  abrirModal(h('h2', { class: 'neon-sm' }, 'Salvar uma cópia da escala'),
+    h('p', { class: 'sutil' }, 'Se algo der errado depois, você volta para esta cópia em Mais › Cópia de segurança.'),
     h('label', {}, 'Nome'), nome, msg,
     h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: async () => {
-      try { await api('/api/gestor/versoes', { acao: 'salvar', nome: nome.value }); fecharModal(); toast('Versão salva.'); }
+      try { await api('/api/gestor/versoes', { acao: 'salvar', nome: nome.value }); fecharModal(); toast('Cópia salva.'); }
       catch (e) { msg.replaceChildren(erroBox(e)); }
     } }, 'Salvar'), h('button', { onclick: fecharModal }, 'Cancelar')));
 }
@@ -330,100 +348,98 @@ const brutoDe = (e, s) => { const a = minDe(e), b = minDe(s); if (a == null || b
 // avisos da jornada (mesma regra do servidor e do site do Fred: só alertam, não bloqueiam)
 function avisosJornada(ent, sai, it, antes, depois) {
   const av = [];
-  if (!ent && !sai) return av;
-  if (!ent || !sai) { av.push('Falta preencher ' + (ent ? 'a saída' : 'a entrada') + '.'); return av; }
+  if (!ent || !sai || ent === sai) return av;
   const bruto = brutoDe(ent, sai), m = bruto - (it || 0);
-  if (ent === sai) av.push('Entrada e saída iguais.');
-  if (m > 600) av.push('Jornada de ' + fmtH(m) + ' no dia: acima de 10 h (regra geral da CLT, art. 59, admite no máximo 2 h extras por dia; conferir a convenção).');
-  if (bruto > 360 && (it || 0) < 60) av.push('Jornada acima de 6 h normalmente pede intervalo de ao menos 1 h (regra geral da CLT, art. 71; conferir se a convenção prevê outra regra).');
-  else if (bruto > 240 && bruto <= 360 && (it || 0) < 15) av.push('Jornada entre 4 h e 6 h normalmente pede intervalo de ao menos 15 min (CLT, art. 71).');
+  if (m > 600) av.push('Mais de 10 h de trabalho no dia (' + fmtH(m) + ').');
+  if (bruto > 360 && (it || 0) < 60) av.push('Turno de mais de 6 h pede 1 h de intervalo.');
+  else if (bruto > 240 && bruto <= 360 && (it || 0) < 15) av.push('Turno de 4 a 6 h pede 15 min de intervalo.');
   const gap = (e1, s1, e2) => { let f = minDe(s1); if (f < minDe(e1)) f += 1440; return 1440 + minDe(e2) - f; };
-  if (antes) { const g = gap(antes[0], antes[1], ent); if (g < 660) av.push('Só ' + fmtH(g) + ' entre a saída de ontem e a entrada de hoje (descanso entre jornadas: 11 h, CLT art. 66; conferir a convenção).'); }
-  if (depois) { const g = gap(ent, sai, depois[0]); if (g < 660) av.push('Só ' + fmtH(g) + ' entre a saída de hoje e a entrada de amanhã (descanso entre jornadas: 11 h, CLT art. 66; conferir a convenção).'); }
+  if (antes) { const g = gap(antes[0], antes[1], ent); if (g < 660) av.push('Só ' + fmtH(g) + ' de descanso desde ontem (o mínimo é 11 h).'); }
+  if (depois) { const g = gap(ent, sai, depois[0]); if (g < 660) av.push('Só ' + fmtH(g) + ' de descanso até amanhã (o mínimo é 11 h).'); }
   return av;
 }
-const listaAvisos = av => av.length ? h('div', { class: 'msg aviso' }, h('ul', {}, av.map(x => h('li', {}, x)))) : null;
+const listaAvisos = av => av.length ? h('div', { class: 'msg aviso' }, h('b', {}, 'Atenção: '), av.join(' ')) : null;
 
+// janela do dia: poucos botões grandes; o resto aparece só quando precisa
 function modalDia(l, k, m) {
   const d = m.dias[k], c = l.dias[k] || { t: '' };
   if (!c.t) { toast('Esta pessoa ainda não tem escala nesse dia.', true); return; }
   const w = somaDias(d.data, -d.dia), par = l.pares[w];
   const podeTrocar = m.editaveis.includes(w) && d.data >= m.hoje && !!par;
-  const motivoTroca = d.data < m.hoje ? 'Esse dia já passou.' : 'A folga só muda de dia na semana atual e na próxima.';
+  const motivoTroca = d.data < m.hoje ? 'Esse dia já passou.' : 'Só dá para mudar folga nesta semana e na próxima.';
   const base = (c.t === 'F' || c.t === 'EX') ? 'F' : 'T';
   const trabalha = t => t === 'T' || t === 'EX' || t === 'TR';
-  let tipo = c.t, destino = null, leis = null;
-  const opcoes = base === 'T'
-    ? [['T', 'Trabalho'], ['F', 'Folga (troca de dia)'], ['FJ', 'Falta justificada'], ['FI', 'Falta injustificada']].concat(d.feriado ? [['TR', 'Trabalhou no feriado']] : [])
-    : [['F', 'Folga'], ['T', 'Trabalho (troca de dia)'], ['EX', 'Dia extra (trabalhou na folga)']];
-  const bloqueio = t => {
-    if (t !== base && (t === 'F' || t === 'T') && !podeTrocar) return motivoTroca;
-    if (t === 'FI' && d.data > m.hoje) return 'Falta injustificada só em dia que já chegou.';
-    return null;
-  };
-  // horário do dia vizinho (para o aviso das 11 horas)
+  // "faltou" é um botão só; depois pergunta se trouxe atestado (FJ) ou não (FI)
+  let tipo = c.t, destino = null, leis = null, verHora = !!c.manual;
+  const principal = t => (t === 'FJ' || t === 'FI') ? 'FALTOU' : t;
+  const botoes = base === 'T'
+    ? [['T', 'Trabalha'], ['F', 'Folga neste dia'], ['FALTOU', 'Faltou']].concat(d.feriado ? [['TR', 'Trabalhou no feriado']] : [])
+    : [['F', 'Folga'], ['T', 'Mudar a folga de dia'], ['EX', 'Veio trabalhar (extra)']];
+  const bloqueio = t => (t !== base && (t === 'F' || t === 'T') && !podeTrocar) ? motivoTroca : null;
   const vizinho = j => { const v = l.dias[j]; if (!v || !v.h) return null; return [v.h.slice(0, 5), v.h.slice(-5)]; };
-  const chips = h('div', { class: 'chips' });
-  const areaTroca = h('div');
-  const motivo = h('select', { 'aria-label': 'Motivo da falta justificada' }, h('option', { value: '' }, 'Selecione o motivo'), m.motivos.map(x => h('option', { value: x, selected: c.motivo === x }, x)));
-  const areaMotivo = h('div', {}, h('label', {}, 'Motivo da falta justificada'), motivo);
+  const grandes = h('div', { class: 'botoes-dia' });
+  const area = h('div');
+  const motivo = h('select', { 'aria-label': 'Motivo' }, m.motivos.map(x => h('option', { value: x, selected: (c.motivo || 'Atestado médico') === x }, x)));
   const ent = h('input', { type: 'time', value: c.ent || '', 'aria-label': 'Entrada' });
   const sai = h('input', { type: 'time', value: c.sai || '', 'aria-label': 'Saída' });
-  const intv = h('input', { type: 'number', min: '0', max: '480', step: '5', inputmode: 'numeric', placeholder: 'minutos', value: c.int != null ? String(c.int) : '', 'aria-label': 'Intervalo em minutos' });
+  const intv = h('input', { type: 'number', min: '0', max: '480', step: '5', inputmode: 'numeric', placeholder: 'min', value: c.int != null ? String(c.int) : '', 'aria-label': 'Intervalo em minutos' });
   const resumoH = h('p', { class: 'sutil pequeno' });
   const avisos = h('div');
-  const usarPadrao = l.hEnt ? h('button', { type: 'button', class: 'pq', onclick: () => { ent.value = l.hEnt; sai.value = l.hSai; intv.value = l.hInt != null ? String(l.hInt) : ''; analisar(); } },
-    'Usar horário padrão (' + l.horario + ')') : null;
-  const areaHora = h('div', {}, h('h3', { class: 'sub' }, 'Horário trabalhado'),
-    h('div', { class: 'grade3' }, h('div', {}, h('label', {}, 'Entrada'), ent), h('div', {}, h('label', {}, 'Saída'), sai), h('div', {}, h('label', {}, 'Intervalo (min)'), intv)),
-    resumoH, usarPadrao ? h('div', { class: 'acoes' }, usarPadrao) : null,
-    h('p', { class: 'sutil pequeno' }, l.horario ? 'Em branco = horário padrão (' + l.horario + ').' : 'Opcional.'));
-  const obs = h('textarea', { rows: '3', maxlength: '300', placeholder: 'Observação (opcional): o que aconteceu, quem autorizou, troca combinada...', 'aria-label': 'Observação' });
+  const obs = h('textarea', { rows: '2', maxlength: '300', placeholder: 'Anotação (opcional)', 'aria-label': 'Anotação' });
   obs.value = c.obs || '';
   const msg = h('div');
   const salvar = h('button', { class: 'cheio' }, 'Salvar');
   const lerInt = () => intv.value === '' ? null : Math.max(0, parseInt(intv.value, 10) || 0);
+  [ent, sai, intv].forEach(x => { x.addEventListener('input', analisar); x.addEventListener('change', analisar); });
 
   function analisar() {
     resumoH.textContent = '';
-    if (!trabalha(tipo)) { avisos.replaceChildren(); return; }
-    const e1 = ent.value || (!sai.value ? l.hEnt : ''), s1 = sai.value || (!ent.value ? l.hSai : '');
-    const it = ent.value || sai.value ? lerInt() : (l.hInt != null ? l.hInt : null);
+    if (!trabalha(tipo)) { por(avisos); return; }
+    const proprio = ent.value && sai.value;
+    const e1 = proprio ? ent.value : l.hEnt, s1 = proprio ? sai.value : l.hSai, it = proprio ? lerInt() : l.hInt;
     const b = brutoDe(e1, s1);
-    if (b != null) resumoH.textContent = 'Trabalhado: ' + fmtH(b - (it || 0)) + ' • previsto: 8h • saldo do dia: ' + fmtSaldo(b - (it || 0) - 480);
-    por(avisos, listaAvisos(avisosJornada(ent.value || (sai.value ? '' : e1), sai.value || (ent.value ? '' : s1), it, vizinho(k - 1), vizinho(k + 1))));
+    if (verHora && b != null) resumoH.textContent = 'Trabalha ' + fmtH(b - (it || 0)) + ' neste dia.';
+    por(avisos, listaAvisos(avisosJornada(e1, s1, it, vizinho(k - 1), vizinho(k + 1))));
   }
-  [ent, sai, intv].forEach(x => { x.addEventListener('input', analisar); x.addEventListener('change', analisar); });
 
-  const desenhar = () => {
-    chips.replaceChildren(...opcoes.map(([t, rot]) => {
+  function desenhar() {
+    por(grandes, botoes.map(([t, rot]) => {
       const pq = bloqueio(t);
-      return h('button', { type: 'button', class: 'chip-tipo tp-' + t + (tipo === t ? ' sel' : ''), disabled: !!pq, title: pq || '', 'aria-pressed': tipo === t ? 'true' : 'false',
-        onclick: () => { tipo = t; destino = null; msg.replaceChildren(); desenhar(); } }, rot);
-    }));
-    const troca = tipo !== base && (tipo === 'F' || tipo === 'T');
-    areaTroca.replaceChildren();
-    if (troca) {
-      const alvos = base === 'T'
-        ? par.filter(x => somaDias(w, x) >= m.hoje)
-        : [0, 1, 2, 3, 4, 5, 6].filter(x => !par.includes(x) && somaDias(w, x) >= m.hoje);
-      if (!leis) { api('/api/gestor/opcoes?id=' + l.id + '&semana=' + w).then(o => { leis = o; desenhar(); }).catch(e => { leis = []; msg.replaceChildren(erroBox(e)); }); }
+      return h('button', { type: 'button', class: 'btn-dia tp-' + t + (principal(tipo) === t ? ' sel' : ''), disabled: !!pq, title: pq || '', 'aria-pressed': principal(tipo) === t ? 'true' : 'false',
+        onclick: () => { tipo = t === 'FALTOU' ? (c.t === 'FI' ? 'FI' : 'FJ') : t; destino = null; por(msg); desenhar(); } }, rot);
+    }), botoes.some(([t]) => bloqueio(t)) ? h('p', { class: 'sutil pequeno' }, motivoTroca) : null);
+    const partes = [];
+    // trocar a folga de dia
+    if (tipo !== base && (tipo === 'F' || tipo === 'T')) {
+      const alvos = base === 'T' ? par.filter(x => somaDias(w, x) >= m.hoje) : [0, 1, 2, 3, 4, 5, 6].filter(x => !par.includes(x) && somaDias(w, x) >= m.hoje);
+      if (!leis) api('/api/gestor/opcoes?id=' + l.id + '&semana=' + w).then(o => { leis = o; desenhar(); }).catch(e => { leis = []; por(msg, erroBox(e)); });
       const parNovo = x => (base === 'T' ? [d.dia, par.find(y => y !== x)] : [x, par.find(y => y !== d.dia)]).sort((p, q) => p - q);
-      const motivoLei = x => { const n = parNovo(x), o = (leis || []).find(o => o.par[0] === n[0] && o.par[1] === n[1]); return o && !o.ok ? o.motivo : null; };
-      const proibidos = alvos.map(x => [x, motivoLei(x)]).filter(([, mo]) => mo);
+      const motivoLei = x => { const n = parNovo(x), o = (leis || []).find(o => o.par[0] === n[0] && o.par[1] === n[1]); return o && !o.ok ? o.motivo.replace(/^A lei não deixa: /, '') : null; };
       if (destino != null && motivoLei(destino)) destino = null;
-      por(areaTroca, h('label', {}, base === 'T' ? 'Qual folga desta semana vira dia de trabalho?' : 'Para qual dia vai esta folga?'),
-        !leis ? h('p', { class: 'sutil' }, 'Conferindo o que a lei permite...') :
-        alvos.length ? h('div', { class: 'chips' }, alvos.map(x => h('button', { type: 'button', class: 'chip-dia' + (destino === x ? ' sel' : ''), disabled: !!motivoLei(x), title: motivoLei(x) || '',
-          onclick: () => { destino = x; desenhar(); } }, DIAS[x] + ' ' + dataBR(somaDias(w, x)))))
-          : h('p', { class: 'sutil' }, 'Não há dia disponível nesta semana.'),
-        leis && proibidos.length ? h('ul', { class: 'sutil pequeno lista-proibidos' }, proibidos.map(([x, mo]) => h('li', {}, DIAS[x] + ' ' + dataBR(somaDias(w, x)) + ': ' + mo.replace(/\.$/, '') + '.'))) : null);
+      partes.push(h('label', {}, base === 'T' ? 'Qual folga vira dia de trabalho?' : 'Para qual dia vai a folga?'),
+        !leis ? h('p', { class: 'sutil' }, 'Conferindo...') : alvos.length ? h('div', { class: 'chips' }, alvos.map(x => h('button', { type: 'button', class: 'chip-dia' + (destino === x ? ' sel' : ''),
+          disabled: !!motivoLei(x), title: motivoLei(x) || '', onclick: () => { destino = x; desenhar(); } }, DIAS[x] + ' ' + dataBR(somaDias(w, x))))) : h('p', { class: 'sutil' }, 'Nenhum dia livre nesta semana.'),
+        leis && alvos.some(motivoLei) ? h('p', { class: 'sutil pequeno' }, 'Riscado = a lei não deixa (' + motivoLei(alvos.find(motivoLei)) + ').') : null);
     }
-    areaMotivo.hidden = tipo !== 'FJ';
-    areaHora.hidden = !trabalha(tipo);
-    salvar.disabled = troca && destino == null;
+    // faltou: trouxe atestado?
+    if (tipo === 'FJ' || tipo === 'FI') {
+      const fiBloq = d.data > m.hoje;
+      partes.push(h('label', {}, 'Trouxe atestado ou justificativa?'),
+        h('div', { class: 'chips' },
+          h('button', { type: 'button', class: 'chip-dia' + (tipo === 'FJ' ? ' sel' : ''), onclick: () => { tipo = 'FJ'; desenhar(); } }, 'Sim'),
+          h('button', { type: 'button', class: 'chip-dia' + (tipo === 'FI' ? ' sel' : ''), disabled: fiBloq, title: fiBloq ? 'Esse dia ainda não chegou.' : '', onclick: () => { tipo = 'FI'; desenhar(); } }, 'Não')),
+        tipo === 'FJ' ? h('div', {}, h('label', {}, 'Motivo'), motivo) : null);
+    }
+    // horário: escondido até pedir
+    if (trabalha(tipo)) {
+      if (!verHora) partes.push(h('button', { type: 'button', class: 'pq link', onclick: () => { verHora = true; desenhar(); } }, 'Mudar horário deste dia' + (l.horario ? ' (normal: ' + l.horario + ')' : '')));
+      else partes.push(h('label', {}, 'Horário deste dia'), h('div', { class: 'grade3' }, h('div', {}, h('small', {}, 'Entrada'), ent), h('div', {}, h('small', {}, 'Saída'), sai), h('div', {}, h('small', {}, 'Intervalo (min)'), intv)),
+        resumoH, l.hEnt ? h('button', { type: 'button', class: 'pq link', onclick: () => { ent.value = ''; sai.value = ''; intv.value = ''; analisar(); } }, 'Usar o horário normal (' + l.horario + ')') : null);
+    }
+    por(area, partes);
+    salvar.disabled = tipo !== base && (tipo === 'F' || tipo === 'T') && destino == null;
     analisar();
-  };
+  }
 
   const gravar = async (corpo, remanejo, troca) => {
     salvar.disabled = true;
@@ -433,11 +449,11 @@ function modalDia(l, k, m) {
         const [a, b] = novo.sort((p, q) => p - q);
         try { await api('/api/gestor/folgas', { id: l.id, semana: w, a, b, remanejo: remanejo || [] }); }
         catch (e) {
-          if (e.codigo === 'cobertura' && !remanejo) { // abriria furo: mostra quem pode cobrir e pede a aprovação do gestor
+          if (e.codigo === 'cobertura' && !remanejo) { // ficaria faltando gente: mostra quem pode cobrir e pede confirmação
             const pl = await api('/api/gestor/previa', { id: l.id, semana: w, a, b }).catch(() => null);
             if (pl) {
-              por(msg, blocoPlano(pl, 'Esta troca deixaria furo:'),
-                pl.resolve ? h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => gravar(corpo, remanejoDe(pl), true) }, 'Salvar com este remanejamento')) : null);
+              por(msg, blocoPlano(pl, 'Vai faltar gente:'),
+                pl.resolve ? h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => gravar(corpo, remanejoDe(pl), true) }, 'Confirmar e salvar')) : null);
               return;
             }
           }
@@ -447,29 +463,27 @@ function modalDia(l, k, m) {
       const r = await api('/api/gestor/dia', corpo);
       fecharModal();
       const av = r.avisos || [];
-      toast(av.length ? 'Dia salvo. ' + av.join(' ') : (troca ? 'Folga trocada de dia.' : 'Dia salvo.'), av.length > 0);
+      toast(av.length ? 'Salvo. Atenção: ' + av.join(' ') : 'Salvo.', av.length > 0);
       painelGestor();
-    } catch (e) { msg.replaceChildren(erroBox(e)); }
+    } catch (e) { por(msg, erroBox(e)); }
     finally { salvar.disabled = false; }
   };
   salvar.addEventListener('click', () => {
-    if ((ent.value === '') !== (sai.value === '')) { msg.replaceChildren(erroBox({ msg: 'Falta preencher ' + (ent.value ? 'a saída' : 'a entrada') + '.' })); return; }
-    if (tipo === 'FJ' && !motivo.value) { msg.replaceChildren(erroBox({ msg: 'Selecione o motivo da falta justificada.' })); return; }
+    if (verHora && (ent.value === '') !== (sai.value === '')) { por(msg, erroBox({ msg: 'Preencha a entrada e a saída, ou deixe as duas em branco.' })); return; }
     const troca = tipo !== base && (tipo === 'F' || tipo === 'T');
     const s = (tipo === 'T' || tipo === 'F') ? '' : tipo;
-    gravar({ id: l.id, data: d.data, s, motivo: motivo.value, ent: ent.value, sai: sai.value, int: ent.value ? lerInt() : null, obs: obs.value }, null, troca);
+    const comHora = verHora && trabalha(tipo) && ent.value;
+    gravar({ id: l.id, data: d.data, s, motivo: tipo === 'FJ' ? motivo.value : '', ent: comHora ? ent.value : '', sai: comHora ? sai.value : '', int: comHora ? lerInt() : null, obs: obs.value }, null, troca);
   });
   const temAlgo = c.t !== base || c.ent || c.obs;
-  const voltarPadrao = () => confirmar('Voltar este dia ao padrão?', 'Falta, dia extra, horário e observação deste dia serão apagados. A folga continua onde está.', 'Voltar ao padrão',
+  const desfazer = () => confirmar('Desfazer as mudanças deste dia?', 'Falta, extra, horário e anotação deste dia serão apagados. A folga continua onde está.', 'Desfazer',
     () => gravar({ id: l.id, data: d.data, s: '' }, null, false), true);
   desenhar();
   abrirModal(h('h2', { class: 'neon-sm' }, l.nome),
-    h('p', { class: 'sutil' }, DIAS_L[d.dia] + ', ' + dataBRc(d.data) + (d.feriado ? ' • feriado: ' + d.feriado : '') + ' • padrão: ' + (base === 'F' ? 'folga' : 'trabalho') + (d.data >= m.previsao ? ' (previsão)' : '') + '. Folgas da semana: ' + parTxt(par) + '.'),
-    c.por ? h('p', { class: 'sutil pequeno' }, 'Última alteração: ' + c.por + ' em ' + c.em) : null,
-    h('h3', { class: 'sub' }, 'Tipo do dia'), chips, areaTroca, areaMotivo, areaHora,
-    h('label', {}, 'Observações'), obs, avisos, msg,
-    h('div', { class: 'acoes' }, salvar, h('button', { onclick: fecharModal }, 'Cancelar'),
-      temAlgo ? h('button', { class: 'perigo', onclick: voltarPadrao }, 'Voltar ao padrão') : null));
+    h('p', { class: 'sutil' }, DIAS_L[d.dia] + ', ' + dataBR(d.data) + (d.feriado ? ' • feriado: ' + d.feriado : '') + '. Folgas da semana: ' + parTxt(par) + '.'),
+    grandes, area, obs, avisos, msg,
+    h('div', { class: 'acoes' }, salvar, h('button', { onclick: fecharModal }, 'Cancelar'), temAlgo ? h('button', { class: 'perigo', onclick: desfazer }, 'Desfazer') : null),
+    c.por ? h('p', { class: 'sutil pequeno' }, 'Mudado por ' + c.por + ' em ' + c.em + '.') : null);
 }
 
 // ---------- equipe
@@ -481,50 +495,48 @@ function gEquipe(g) {
   const nome = h('input', { placeholder: 'Nome completo' });
   const cpf = h('input', { inputmode: 'numeric', maxlength: '14', placeholder: '000.000.000-00', autocomplete: 'off' });
   const fn = h('select', {}, g.ordem.map(f => h('option', { value: f }, g.funcoesInfo[f].nome)));
-  const dom = h('select', {}, h('option', { value: '3' }, 'Homem: folga 1 domingo a cada 3 semanas'), h('option', { value: '2' }, 'Mulher: folga 1 domingo a cada 2 semanas'));
+  const dom = h('select', {}, h('option', { value: '3' }, 'Homem'), h('option', { value: '2' }, 'Mulher'));
   const ent = campoHora('15:00', 'Entrada'), sai = campoHora('00:00', 'Saída'), intv = campoInt(60);
   const msg = h('div');
   const cadastrar = async () => {
     try {
       const r = await api('/api/gestor/funcionarios', { nome: nome.value, cpf: cpf.value, funcao: fn.value, domingoSemanas: Number(dom.value), hEnt: ent.value, hSai: sai.value, hInt: ent.value ? intDe(intv) : null });
-      await painelGestor(); toast(r.nome + ' cadastrado. Ele entra com o nome completo e o CPF.');
+      await painelGestor(); toast(r.nome + ' cadastrado.');
     } catch (e) { msg.replaceChildren(erroBox(e)); }
   };
-  const remover = f => confirmar('Remover ' + f.nome + '?', 'O colaborador sai da escala e perde o acesso. Se faltar gente, a escala mostra o furo e sugere quem pode cobrir, para você aprovar.', 'Remover',
+  const remover = f => confirmar('Remover ' + f.nome + '?', 'Ele sai da escala e não consegue mais entrar no sistema.', 'Remover',
     async () => { try { await api('/api/gestor/funcionarios/remover', { id: f.id }); toast('Removido.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
-  const revogar = f => confirmar('Encerrar as sessões de ' + f.nome + '?', 'Ele sai de todos os aparelhos onde estiver logado. Depois pode entrar de novo com nome e CPF.', 'Encerrar',
-    async () => { try { await api('/api/gestor/funcionarios/acesso', { id: f.id }); toast('Sessões encerradas.'); } catch (e) { toast(e.msg, true); } }, true);
+  const revogar = f => confirmar('Desconectar ' + f.nome + ' dos aparelhos?', 'Ele sai do sistema em todos os celulares e computadores. Pode entrar de novo com nome e CPF.', 'Desconectar',
+    async () => { try { await api('/api/gestor/funcionarios/acesso', { id: f.id }); toast('Desconectado.'); } catch (e) { toast(e.msg, true); } }, true);
   const editar = f => {
     const n = h('input', { value: f.nome, maxlength: '60' });
     const fu = h('select', {}, g.ordem.map(x => h('option', { value: x, selected: x === f.funcao }, g.funcoesInfo[x].nome)));
-    const dm = h('select', {}, h('option', { value: '3', selected: f.domingoSemanas === 3 }, 'Folga 1 domingo a cada 3 semanas'), h('option', { value: '2', selected: f.domingoSemanas === 2 }, 'Folga 1 domingo a cada 2 semanas'));
+    const dm = h('select', {}, h('option', { value: '3', selected: f.domingoSemanas === 3 }, 'Homem'), h('option', { value: '2', selected: f.domingoSemanas === 2 }, 'Mulher'));
     const e1 = campoHora(f.hEnt, 'Entrada'), s1 = campoHora(f.hSai, 'Saída'), i1 = campoInt(f.hInt);
     const m2 = h('div');
     abrirModal(h('h2', { class: 'neon-sm' }, 'Editar ' + f.nome),
       h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Nome completo'), n), h('div', {}, h('label', {}, 'Função'), fu),
-        h('div', {}, h('label', {}, 'Regra de domingo'), dm), h('div', {}, h('label', {}, 'Horário padrão (entrada, saída e intervalo)'), h('div', { class: 'grade3' }, e1, s1, i1))),
-      h('p', { class: 'sutil pequeno' }, 'O CPF não muda aqui (é o login dele). Para trocar o CPF, remova e cadastre de novo.'), m2,
+        h('div', {}, h('label', {}, 'Sexo (regra da folga no domingo)'), dm), h('div', {}, h('label', {}, 'Horário normal (entrada, saída, intervalo em min)'), h('div', { class: 'grade3' }, e1, s1, i1))), m2,
       h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: async () => {
         try { await api('/api/gestor/funcionarios/editar', { id: f.id, nome: n.value, funcao: fu.value, domingoSemanas: Number(dm.value), hEnt: e1.value, hSai: s1.value, hInt: e1.value ? intDe(i1) : null }); fecharModal(); toast('Dados salvos.'); painelGestor(); }
         catch (e) { m2.replaceChildren(erroBox(e)); }
-      } }, 'Salvar'), h('button', { onclick: fecharModal }, 'Cancelar')));
+      } }, 'Salvar'), h('button', { onclick: fecharModal }, 'Cancelar')),
+      h('button', { class: 'pq link', onclick: () => { fecharModal(); revogar(f); } }, 'Desconectar dos aparelhos'));
   };
   const temDemo = g.equipe.some(f => f.demo);
-  const removerDemo = () => confirmar('Remover equipe de demonstração?', 'Remove todos os colaboradores fictícios. Os que você cadastrou ficam.', 'Remover',
+  const removerDemo = () => confirmar('Apagar a equipe de exemplo?', 'Apaga as pessoas de exemplo. As que você cadastrou ficam.', 'Apagar',
     async () => { try { const r = await api('/api/gestor/demo/remover', {}); toast(r.removidos + ' removido(s).'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
   return h('div', {},
-    h('div', { class: 'card' }, h('h2', {}, 'Cadastrar colaborador'),
-      h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Nome'), nome), h('div', {}, h('label', {}, 'CPF (é o login dele)'), cpf), h('div', {}, h('label', {}, 'Função'), fn),
-        h('div', {}, h('label', {}, 'Regra de domingo'), dom), h('div', {}, h('label', {}, 'Horário padrão (entrada, saída e intervalo)'), h('div', { class: 'grade3' }, ent, sai, intv))),
-      msg, h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: cadastrar }, 'Cadastrar')),
-      h('p', { class: 'sutil pequeno' }, 'O colaborador entra com o nome completo e o CPF. O sistema guarda só um código irreversível do CPF (e os 2 últimos dígitos). As folgas são encaixadas sem mexer nas dos outros.')),
     h('div', { class: 'card' }, h('h2', {}, 'Equipe (' + g.equipe.length + ')'),
-      temDemo ? h('div', { class: 'msg' }, 'Há colaboradores fictícios de demonstração. ', h('button', { class: 'perigo pq', onclick: removerDemo }, 'Remover demonstração')) : null,
       h('div', { class: 'tabela-rolagem' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['Nome', 'Função', 'CPF', 'Domingo', 'Horário', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome, f.demo ? h('span', { class: 'badge' }, 'demo') : null), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.cpf),
-          h('td', {}, 'a cada ' + f.domingoSemanas + ' sem.'), h('td', {}, horarioTxt(f)),
-          h('td', { class: 'acoes-linha' }, h('button', { class: 'pq', onclick: () => editar(f) }, 'Editar'), h('button', { class: 'pq', onclick: () => revogar(f) }, 'Encerrar sessões'), h('button', { class: 'perigo pq', onclick: () => remover(f) }, 'Remover'))))))))
+        h('thead', {}, h('tr', {}, ['Nome', 'Função', 'Horário', ''].map(t => h('th', {}, t)))),
+        h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.hEnt ? f.hEnt + '–' + f.hSai : '—'),
+          h('td', { class: 'acoes-linha' }, h('button', { class: 'pq', onclick: () => editar(f) }, 'Editar'), h('button', { class: 'perigo pq', onclick: () => remover(f) }, 'Remover'))))))),
+      temDemo ? h('p', { class: 'sutil pequeno' }, 'Esta é uma equipe de exemplo. ', h('button', { class: 'pq link', onclick: removerDemo }, 'Apagar equipe de exemplo')) : null),
+    h('details', { class: 'card cadastro' }, h('summary', {}, '+ Cadastrar funcionário'),
+      h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Nome completo'), nome), h('div', {}, h('label', {}, 'CPF (ele entra com o CPF)'), cpf), h('div', {}, h('label', {}, 'Função'), fn),
+        h('div', {}, h('label', {}, 'Sexo (regra da folga no domingo)'), dom), h('div', {}, h('label', {}, 'Horário normal (entrada, saída, intervalo em min)'), h('div', { class: 'grade3' }, ent, sai, intv))),
+      msg, h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: cadastrar }, 'Cadastrar')))
   );
 }
 
@@ -532,10 +544,10 @@ function gCobertura(g) {
   const linhas = g.ordem.map(f => {
     const ins = DIAS.map((_, d) => h('input', { type: 'number', min: '0', max: '30', value: String(g.minimos[f][d]), 'aria-label': g.funcoesInfo[f].nome + ' ' + DIAS_L[d] }));
     return h('tr', {}, h('td', {}, g.funcoesInfo[f].nome), ins.map(i => h('td', {}, i)),
-      h('td', {}, h('button', { onclick: async () => { try { await api('/api/gestor/minimos', { funcao: f, dias: ins.map(i => Number(i.value)) }); toast('Cobertura salva.'); painelGestor(); } catch (e) { toast(e.msg, true); } } }, 'Salvar')));
+      h('td', {}, h('button', { onclick: async () => { try { await api('/api/gestor/minimos', { funcao: f, dias: ins.map(i => Number(i.value)) }); toast('Salvo.'); painelGestor(); } catch (e) { toast(e.msg, true); } } }, 'Salvar')));
   });
-  return h('div', {}, h('div', { class: 'card' }, h('h2', {}, 'Cobertura mínima por dia'),
-    h('p', { class: 'sutil' }, 'Quantas pessoas de cada função precisam trabalhar em cada dia. O sistema usa esses números para montar as semanas e para barrar qualquer troca que deixe furo.'),
+  return h('div', {}, h('div', { class: 'card' }, h('h2', {}, 'Pessoas por dia'),
+    h('p', { class: 'sutil' }, 'Quantas pessoas de cada função precisam trabalhar em cada dia. O sistema não deixa ficar menos que isso.'),
     h('div', { class: 'tabela-rolagem' }, h('table', { class: 'minimos' }, h('thead', {}, h('tr', {}, h('th', {}, 'Função'), DIAS.map(d => h('th', {}, d)), h('th', {}))), h('tbody', {}, linhas)))));
 }
 
@@ -552,25 +564,27 @@ function gRegras(g) {
     async () => { try { await api('/api/gestor/feriados', { data: x.data, remover: true }); toast('Feriado removido.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
   return h('div', {},
     h('div', { class: 'card' }, h('h2', {}, 'Feriados'),
-      h('p', { class: 'sutil' }, 'Os nacionais já vêm cadastrados. Inclua os de Araraquara e de São Paulo e remova o que não valer. Feriado conta para a escala e para o "trabalhou no feriado".'),
+      h('p', { class: 'sutil' }, 'Os nacionais já estão aqui. Inclua os da cidade (ex.: aniversário de Araraquara).'),
       h('div', { class: 'grade-feriado' }, data, nome, h('button', { class: 'cheio', onclick: adicionar }, 'Adicionar')), msg,
       h('ul', { class: 'limpa lista-fer' }, g.listaFeriados.map(x => h('li', {}, h('span', {}, h('b', {}, dataBRc(x.data)), ' ' + x.nome),
         x.data >= g.semana ? h('button', { class: 'pq perigo', onclick: () => remover(x) }, 'Remover') : h('span', { class: 'sutil pequeno' }, 'já passou'))))),
-    h('div', { class: 'card' }, h('h2', {}, 'Regras aplicadas e fonte'),
+    h('details', { class: 'card' }, h('summary', {}, 'Regras da lei que o sistema segue'),
       h('div', { class: 'msg' }, 'Não é parecer jurídico. Confira cada item com o SINTHORESSARA ou com o contador antes de usar como oficial.'),
       g.regras.map(r => h('div', { class: 'pedido' }, h('b', {}, r.titulo), ' ', h('span', { class: 'badge ' + rot[r.status][0] }, rot[r.status][1]), h('p', {}, r.descricao), h('div', { class: 'sutil' }, 'Fonte: ' + r.fonte)))));
 }
 
 function gAudit(g) {
-  const cab = ['Colaborador', 'Folgas', 'Máx. dias seguidos', 'Semanas sem folgar domingo', 'Feriados trabalhados', 'Situação'];
-  const baixar = () => baixarArquivo('auditoria-' + g.semana + '.csv', csv([['Auditoria da semana de ' + dataBRc(g.semana)], cab,
-    ...g.auditoria.map(a => [a.nome, a.folgas, a.maxSeq, a.semDom, a.feriados, a.ok ? 'em regra' : 'verificar'])]), 'text/csv;charset=utf-8');
-  return h('div', { class: 'card' }, h('div', { class: 'topo-escala' }, h('h2', {}, 'Auditoria da semana de ' + dataBR(g.semana)), h('button', { onclick: baixar }, 'Baixar planilha')),
-    h('p', { class: 'sutil' }, 'Confere cada pessoa contra as regras: 2 folgas na semana, no máximo 6 dias seguidos e o domingo de folga no prazo.'),
+  const cab = ['Nome', 'Folgas na semana', 'Dias seguidos (máx. 6)', 'Semanas sem folga no domingo', 'Feriados trabalhados', 'Situação'];
+  const baixar = () => baixarArquivo('conferir-lei-' + g.semana + '.csv', csv([['Conferência da semana de ' + dataBRc(g.semana)], cab,
+    ...g.auditoria.map(a => [a.nome, a.folgas, a.maxSeq, a.semDom, a.feriados, a.ok ? 'certo' : 'verificar'])]), 'text/csv;charset=utf-8');
+  const errados = g.auditoria.filter(a => !a.ok);
+  return h('div', { class: 'card' }, h('h2', {}, 'Conferir a lei • semana de ' + dataBR(g.semana)),
+    h('div', { class: 'hoje-frase' + (errados.length ? ' ruim' : '') }, errados.length ? h('b', {}, errados.length + (errados.length === 1 ? ' pessoa precisa' : ' pessoas precisam') + ' de atenção: ' + errados.map(a => a.nome).join(', ') + '.') : 'Todo mundo está dentro da lei nesta semana.'),
     h('div', { class: 'tabela-rolagem' }, h('table', {},
-      h('thead', {}, h('tr', {}, cab.map(t => h('th', {}, t)))),
-      h('tbody', {}, g.auditoria.map(a => h('tr', {}, h('td', {}, a.nome), h('td', {}, String(a.folgas)), h('td', {}, String(a.maxSeq)), h('td', {}, String(a.semDom)), h('td', {}, String(a.feriados)),
-        h('td', {}, h('span', { class: 'badge ' + (a.ok ? 'ok' : 'bad') }, a.ok ? 'em regra' : 'verificar'))))))));
+      h('thead', {}, h('tr', {}, cab.slice(0, 3).concat(['Situação']).map(t => h('th', {}, t)))),
+      h('tbody', {}, g.auditoria.map(a => h('tr', {}, h('td', {}, a.nome), h('td', {}, String(a.folgas)), h('td', {}, String(a.maxSeq)),
+        h('td', {}, h('span', { class: 'badge ' + (a.ok ? 'ok' : 'bad') }, a.ok ? 'certo' : 'verificar'))))))),
+    h('div', { class: 'acoes' }, h('button', { onclick: baixar }, 'Baixar planilha (Excel)')));
 }
 
 // ---------- identidade da empresa
@@ -614,37 +628,37 @@ function gBackup(g) {
   const baixar = async () => {
     try {
       const b = await api('/api/gestor/backup');
-      baixarArquivo('backup-escala-' + g.hoje + '.json', JSON.stringify(b, null, 1), 'application/json');
-      toast('Backup baixado. Guarde o arquivo num lugar seguro.');
+      baixarArquivo('copia-escala-' + g.hoje + '.json', JSON.stringify(b, null, 1), 'application/json');
+      toast('Cópia baixada. Guarde o arquivo num lugar seguro.');
     } catch (e) { toast(e.msg, true); }
   };
-  const arquivo = h('input', { type: 'file', accept: 'application/json,.json', 'aria-label': 'Arquivo de backup' });
+  const arquivo = h('input', { type: 'file', accept: 'application/json,.json', 'aria-label': 'Arquivo da cópia' });
   const restaurar = () => {
     const f = arquivo.files[0];
-    if (!f) { toast('Escolha o arquivo de backup (.json).', true); return; }
+    if (!f) { toast('Escolha o arquivo da cópia (.json).', true); return; }
     const r = new FileReader();
     r.onload = () => {
       let obj; try { obj = JSON.parse(r.result); } catch (e) { toast('Arquivo inválido.', true); return; }
-      confirmar('Restaurar o backup?', 'Todos os dados atuais (equipe, escala, faltas, feriados) serão trocados pelos do arquivo "' + f.name + '". Baixe um backup do jeito atual antes, por garantia.', 'Restaurar',
-        async () => { try { await api('/api/gestor/backup/restaurar', { estado: obj }); MARCA = null; await carregarMarca(); toast('Backup restaurado.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
+      confirmar('Restaurar esta cópia?', 'Tudo o que está no sistema agora (equipe, escala, faltas, feriados) será trocado pelo que está no arquivo "' + f.name + '".', 'Restaurar',
+        async () => { try { await api('/api/gestor/backup/restaurar', { estado: obj }); MARCA = null; await carregarMarca(); toast('Cópia restaurada.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
     };
     r.readAsText(f);
   };
-  const voltar = v => confirmar('Voltar para "' + v.nome + '"?', 'A escala de hoje em diante volta a ficar como estava nessa versão (folgas da semana atual e da próxima, faltas e horários). O que já passou não muda, e nada que quebre a lei é aplicado.', 'Voltar para esta versão',
-    async () => { try { await api('/api/gestor/versoes', { acao: 'restaurar', id: v.id }); toast('Escala voltou para a versão.'); abaGestor = 'escala'; painelGestor(); } catch (e) { toast(e.msg, true); } });
-  const excluir = v => confirmar('Excluir a versão "' + v.nome + '"?', 'A escala atual não muda.', 'Excluir',
-    async () => { try { await api('/api/gestor/versoes', { acao: 'excluir', id: v.id }); toast('Versão excluída.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
+  const voltar = v => confirmar('Voltar para "' + v.nome + '"?', 'A escala de hoje em diante volta a ficar como estava nessa cópia. O que já passou não muda.', 'Voltar',
+    async () => { try { await api('/api/gestor/versoes', { acao: 'restaurar', id: v.id }); toast('Escala voltou para a cópia.'); abaGestor = 'escala'; painelGestor(); } catch (e) { toast(e.msg, true); } });
+  const excluir = v => confirmar('Apagar a cópia "' + v.nome + '"?', 'A escala de agora não muda.', 'Apagar',
+    async () => { try { await api('/api/gestor/versoes', { acao: 'excluir', id: v.id }); toast('Cópia apagada.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
   return h('div', {},
-    h('div', { class: 'card' }, h('h2', {}, 'Versões salvas da escala'),
-      h('p', { class: 'sutil' }, 'Use "Salvar versão" na Escala do mês antes de uma mudança grande. Se não gostar do resultado, volte aqui.'),
+    h('div', { class: 'card' }, h('h2', {}, 'Cópias da escala'),
+      h('p', { class: 'sutil' }, 'Para salvar uma: Escala › Mais opções › Salvar uma cópia da escala.'),
       g.copias.length ? h('ul', { class: 'limpa lista-fer' }, g.copias.map(v => h('li', {}, h('span', {}, h('b', {}, v.nome), h('span', { class: 'sutil pequeno' }, ' • ' + v.em + ' • ' + v.por)),
-        h('span', { class: 'acoes-linha' }, h('button', { class: 'pq', onclick: () => voltar(v) }, 'Voltar para esta'), h('button', { class: 'pq perigo', onclick: () => excluir(v) }, 'Excluir')))))
-        : h('p', { class: 'sutil' }, 'Nenhuma versão salva ainda.')),
-    h('div', { class: 'card' }, h('h2', {}, 'Backup'),
-      h('p', { class: 'sutil' }, 'Um arquivo com todos os dados. Baixe de vez em quando e antes de qualquer mudança grande.'),
-      h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: baixar }, 'Baixar backup')),
-      h('label', {}, 'Restaurar um backup'), h('div', { class: 'grade-arquivo' }, arquivo, h('button', { class: 'perigo', onclick: restaurar }, 'Restaurar'))),
-    h('div', { class: 'card' }, h('h2', {}, 'Histórico'), h('p', { class: 'sutil pequeno' }, 'Tudo o que foi alterado, por quem e quando.'),
+        h('span', { class: 'acoes-linha' }, h('button', { class: 'pq', onclick: () => voltar(v) }, 'Voltar para esta'), h('button', { class: 'pq perigo', onclick: () => excluir(v) }, 'Apagar')))))
+        : h('p', { class: 'sutil' }, 'Nenhuma cópia salva ainda.')),
+    h('div', { class: 'card' }, h('h2', {}, 'Cópia de segurança (arquivo)'),
+      h('p', { class: 'sutil' }, 'Um arquivo com todos os dados, para guardar no computador ou no pen drive.'),
+      h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: baixar }, 'Baixar cópia')),
+      h('label', {}, 'Restaurar uma cópia'), h('div', { class: 'grade-arquivo' }, arquivo, h('button', { class: 'perigo', onclick: restaurar }, 'Restaurar'))),
+    h('div', { class: 'card' }, h('h2', {}, 'Histórico'), h('p', { class: 'sutil pequeno' }, 'Tudo o que foi mudado, por quem e quando.'),
       h('ul', { class: 'limpa historico' }, g.log.map(l => h('li', {}, h('span', { class: 'sutil' }, l.t + ' '), l.texto)))));
 }
 
