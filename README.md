@@ -82,10 +82,16 @@ Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou
 
 ## O que testar
 
-- **Funcionário:** ver as próprias folgas no calendário do **mês** (depois da próxima semana é previsão). Para mudar uma folga, fala com o gestor.
-- **Gestor:** ver a **escala do mês inteiro** numa tabela (todos x todos os dias, com "trabalhando / mínimo" por função); tocar num dia da semana atual ou da próxima para trocar a folga de alguém; **imprimir ou salvar PDF** em uma folha A4. Se a troca deixar falta de gente ("furo"), o sistema mostra quem pode cobrir, e **ninguém muda de folga sem o gestor aprovar**.
-- **Gestor → Escala → Alterar:** trocar as folgas de alguém (2 dias quaisquer). O sistema deve **recusar** o que quebra o descanso semanal (mais de 6 dias seguidos) ou a folga de domingo.
-- **Gestor → Equipe:** cadastrar alguém com um CPF de teste válido (ex.: gere um em um gerador de CPF para testes) e ver se ele entra na escala.
+- **Entrada rápida:** na tela de entrada, os botões "Entrar rápido" entram direto como gestor ou funcionário (só contas fictícias; o gestor pode desligar na aba Empresa).
+- **Funcionário:** calendário do mês com folgas, faltas e dias extras; o horário dele; "Precisa mudar uma folga? Fale com o gestor."
+- **Gestor → Escala do mês:** tabela com todos e todos os dias. Toque num dia para marcar **folga (troca de dia)**, **falta justificada** (com motivo), **falta injustificada**, **dia extra**, **trabalhou no feriado**, **horário** e **observação**. "Mostrar horários" mostra a entrada/saída de cada dia. Embaixo, o **resumo do mês** por pessoa.
+- **Botões da escala:** Imprimir/PDF (uma folha A4), **Baixar planilha** (abre no Excel) e **Salvar versão**.
+- **O sistema deve recusar:** troca de folga que quebra a lei (mais de 6 dias seguidos, domingo), jornada acima de 10 horas, falta injustificada no futuro. Se a troca deixar falta de gente, mostra quem pode cobrir e **ninguém muda sem o gestor aprovar**. Menos de 11 horas de descanso entre um dia e outro gera aviso.
+- **Equipe:** cadastrar e **editar** (função, regra de domingo, horário padrão).
+- **Feriados e regras:** cadastrar feriado municipal (ex.: aniversário de Araraquara) e ver as regras da lei.
+- **Auditoria:** quem está em regra na semana; baixar em planilha.
+- **Empresa:** nome, logo e cor do sistema.
+- **Backup e histórico:** voltar para uma versão salva, baixar/restaurar backup e ver tudo o que foi alterado.
 
 Achou erro? Abra uma **Issue** aqui no repositório dizendo: quem estava logado, o que fez, o que esperava e o que aconteceu (print ajuda).
 
