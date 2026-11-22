@@ -82,8 +82,8 @@ Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou
 
 ## O que testar
 
-- **Funcionário:** ver a escala do **mês** (mês atual e o próximo; depois da próxima semana é previsão); pedir uma mudança **urgente** de folga (dias que a lei não deixa aparecem apagados, com o motivo); **trocar** ou **cancelar** o pedido enquanto o gestor não decide.
-- **Gestor:** ver a escala de todas as semanas do mês (as de previsão são só consulta); validar ou recusar pedidos; quando a troca deixaria falta de gente ("furo"), conferir a sugestão de quem pode cobrir — **ninguém muda de folga sem o gestor aprovar**.
+- **Funcionário:** ver as próprias folgas no calendário do **mês** (depois da próxima semana é previsão). Para mudar uma folga, fala com o gestor.
+- **Gestor:** ver a **escala do mês inteiro** numa tabela (todos x todos os dias, com "trabalhando / mínimo" por função); tocar num dia da semana atual ou da próxima para trocar a folga de alguém; **imprimir ou salvar PDF** em uma folha A4. Se a troca deixar falta de gente ("furo"), o sistema mostra quem pode cobrir, e **ninguém muda de folga sem o gestor aprovar**.
 - **Gestor → Escala → Alterar:** trocar as folgas de alguém (2 dias quaisquer). O sistema deve **recusar** o que quebra o descanso semanal (mais de 6 dias seguidos) ou a folga de domingo.
 - **Gestor → Equipe:** cadastrar alguém com um CPF de teste válido (ex.: gere um em um gerador de CPF para testes) e ver se ele entra na escala.
 

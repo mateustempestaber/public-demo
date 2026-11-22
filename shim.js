@@ -3,7 +3,7 @@
 (function () {
   try {
     if (/[?&]reiniciar=1/.test(location.search)) {
-      localStorage.removeItem('quintal-demo-estado-v4');
+      localStorage.removeItem('quintal-demo-estado-v5');
       history.replaceState(null, '', location.pathname + location.hash);
     }
   } catch (e) { /* sem localStorage: segue sem guardar */ }

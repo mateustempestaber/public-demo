@@ -3,7 +3,8 @@ const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const DIAS_L = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const app = document.getElementById('app');
 const usuario = document.getElementById('usuario');
-let abaGestor = 'painel';
+let abaGestor = 'escala';
+let mesGestor = '';
 let semanaGestor = '';
 let mesFunc = 0; // 0 = mês atual, 1 = próximo mês
 
@@ -157,28 +158,17 @@ async function painelFuncionario() {
     h('h3', {}, nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)),
     h('button', { class: 'pq', disabled: mesFunc === 1, 'aria-label': 'Próximo mês', onclick: () => { mesFunc = 1; painelFuncionario(); } }, '›'));
 
-  const linhaSemana = sem => {
-    const emAnalise = sem.meuPedido && sem.meuPedido.status === 'pendente';
-    const cancelar = async () => { try { await api('/api/funcionario/cancelar', { id: sem.meuPedido.id }); toast('Pedido cancelado.'); painelFuncionario(); } catch (e) { toast(e.msg, true); } };
-    return h('div', { class: 'linha-semana' },
-      h('div', {}, h('b', {}, sem.rotulo), h('span', { class: 'sutil' }, ' (' + dataBR(sem.inicio) + ' a ' + dataBR(sem.fim) + ')'),
-        h('div', {}, 'Folgas: ', h('b', { class: 'neon-sm' }, parTxt(sem.par))),
-        sem.meuPedido ? h('div', { class: 'sutil pequeno' }, 'Pedido urgente (' + parTxt(sem.meuPedido.novo) + '): ' + statusTxt(sem.meuPedido)) : null,
-        !sem.podePedir && sem.motivoBloqueio ? h('div', { class: 'sutil pequeno' }, sem.motivoBloqueio) : null),
-      h('div', { class: 'acoes' },
-        emAnalise ? h('button', { class: 'pq perigo', onclick: cancelar }, 'Cancelar pedido') : null,
-        h('button', { class: 'aviso pq', disabled: !sem.podePedir, onclick: () => modalUrgente(p, sem) }, emAnalise ? 'Trocar pedido' : 'Pedir mudança')));
-  };
-
   app.replaceChildren(
     h('div', { class: 'card' },
       h('h2', {}, p.icone + ' ' + p.nome + ' • ' + p.funcaoNome),
       navMes, calendarioMes(p.calendario, mes), legendaSemana(),
       h('p', { class: 'sutil pequeno' }, 'Depois da próxima semana a escala é uma previsão e ainda pode mudar.')),
     h('div', { class: 'card' },
-      h('h2', {}, 'Mudar uma folga'),
-      h('p', { class: 'sutil pequeno' }, 'Dá para pedir mudança urgente na semana atual e na próxima. O gestor valida ou recusa.'),
-      p.semanas.map(linhaSemana)));
+      h('h2', {}, 'Suas folgas'),
+      p.semanas.map(sem => h('div', { class: 'linha-semana' },
+        h('div', {}, h('b', {}, sem.rotulo), h('span', { class: 'sutil' }, ' (' + dataBR(sem.inicio) + ' a ' + dataBR(sem.fim) + ')')),
+        h('b', { class: 'neon-sm' }, parTxt(sem.par)))),
+      h('p', { class: 'sutil pequeno' }, 'Precisa mudar uma folga? Fale com o gestor.')));
 }
 
 // opcoes (opcional): lista {par, ok, motivo} vinda do servidor; dias que a lei não deixa ficam apagados.
@@ -229,29 +219,6 @@ function seletorDeDias(sem, hoje, inicial, opcoes, aoRecusar) {
   return { dias, sel, aoMudar };
 }
 
-function modalUrgente(p, sem) {
-  const msg = h('div');
-  const enviar = h('button', { class: 'cheio', disabled: true }, 'Alertar o gestor');
-  const { dias, sel, aoMudar } = seletorDeDias(sem.dias, p.hoje, [], sem.opcoes, txt => msg.replaceChildren(h('div', { class: 'msg erro' }, txt)));
-  aoMudar.push(s => { enviar.disabled = s.size !== 2; msg.replaceChildren(); });
-  aoMudar.forEach(f => f(sel));
-  const cat = h('select', {}, p.categorias.map(c => h('option', { value: c }, c)));
-  const motivo = h('textarea', { rows: '2', maxlength: '140', placeholder: 'Só o necessário. Evite detalhes de saúde.' });
-  enviar.addEventListener('click', async () => {
-    const [a, b] = [...sel].sort((x, y) => x - y);
-    try {
-      await api('/api/funcionario/urgente', { semana: sem.inicio, a, b, categoria: cat.value, motivo: motivo.value });
-      fecharModal(); toast('Gestor alertado. Aguarde a decisão.'); painelFuncionario();
-    } catch (e) { msg.replaceChildren(erroBox(e)); }
-  });
-  abrirModal(h('h2', { class: 'neon-sm' }, 'Pedido urgente'),
-    h('p', { class: 'sutil' }, 'Folgas atuais: ' + parTxt(sem.par) + '. Toque nos 2 dias que serão sua nova folga.'
-      + (sem.meuPedido && sem.meuPedido.status === 'pendente' ? ' Este pedido substitui o que está em análise.' : '')), dias,
-    h('p', { class: 'sutil pequeno' }, 'Dias apagados ("não pode") quebrariam a lei: no máximo 6 dias seguidos de trabalho e a folga de domingo obrigatória. Toque neles para ver o motivo.'),
-    h('label', {}, 'Categoria'), cat, h('label', {}, 'Motivo (opcional)'), motivo, msg,
-    h('div', { class: 'acoes' }, enviar, h('button', { onclick: fecharModal }, 'Cancelar')));
-}
-
 // ---------- gestor
 async function painelGestor() {
   let g;
@@ -259,9 +226,10 @@ async function painelGestor() {
   semanaGestor = g.semana;
   const eu = await api('/api/eu').catch(() => ({ nome: 'Gestor' }));
   barraUsuario(eu.nome || 'Gestor', 'gestor');
-  const abas = [['painel', 'Pedidos' + (g.pendentes ? ' (' + g.pendentes + ')' : '')], ['escala', 'Escala'], ['equipe', 'Equipe'], ['cobertura', 'Cobertura mínima'], ['regras', 'Regras e sindicato'], ['audit', 'Auditoria'], ['log', 'Registro']];
+  const abas = [['escala', 'Escala do mês'], ['equipe', 'Equipe'], ['cobertura', 'Cobertura mínima'], ['regras', 'Regras e lei'], ['audit', 'Auditoria'], ['log', 'Histórico']];
   const nav = h('div', { class: 'abas' }, abas.map(([k, t]) => h('button', { class: abaGestor === k ? 'ativa' : '', onclick: () => { abaGestor = k; painelGestor(); } }, t)));
-  app.replaceChildren(nav, { painel: gPedidos, escala: gEscala, equipe: gEquipe, cobertura: gCobertura, regras: gRegras, audit: gAudit, log: gLog }[abaGestor](g));
+  if (abaGestor === 'escala') { app.replaceChildren(nav, h('div', { class: 'card' }, h('p', { class: 'sutil' }, 'Carregando a escala...'))); return gEscalaMes(nav, g); }
+  app.replaceChildren(nav, { equipe: gEquipe, cobertura: gCobertura, regras: gRegras, audit: gAudit, log: gLog }[abaGestor](g));
 }
 
 // lista do remanejamento sugerido: só vale se o gestor aprovar
@@ -277,44 +245,12 @@ function blocoPlano(pl, titulo) {
 }
 const remanejoDe = pl => (pl && pl.sugestoes ? pl.sugestoes : []).map(s => ({ id: s.id, a: s.para[0], b: s.para[1] }));
 
-function cartaoPedido(g, p) {
-  const pl = p.previsao;
-  const furo = !!(pl && pl.furos && pl.furos.length);
-  const decidir = async (url, corpo, ok) => {
-    try { await api(url, corpo); toast(ok); painelGestor(); }
-    catch (e) { toast(e.msg + (e.detalhes ? ' ' + e.detalhes.join('; ') : ''), true); painelGestor(); }
-  };
-  return h('div', { class: 'pedido urg' },
-    h('div', {}, h('b', {}, p.nome), ' ', h('span', { class: 'badge' }, g.funcoesInfo[p.funcao].nome), ' ', h('span', { class: 'badge urg' }, 'URGENTE')),
-    h('div', { class: 'sutil' }, 'Semana de ' + dataBR(p.semana) + ' • pedido em ' + p.criadoEm),
-    h('div', {}, parTxt(p.antigo) + '  →  ', h('b', {}, parTxt(p.novo))),
-    p.categoria ? h('div', {}, 'Categoria: ' + p.categoria + (p.motivo ? ' — ' + p.motivo : '')) : null,
-    furo ? blocoPlano(pl, 'Aprovar só esta troca deixaria furo:') : h('div', { class: 'sutil pequeno' }, 'Sem furo: só as folgas de ' + p.nome + ' mudam.'),
-    h('div', { class: 'acoes' },
-      furo
-        ? h('button', { class: 'cheio', disabled: !pl.resolve, onclick: () => decidir('/api/gestor/aprovar', { id: p.id, remanejo: remanejoDe(pl) }, 'Validado com o remanejamento que você aprovou.') }, 'Validar com este remanejamento')
-        : h('button', { class: 'cheio', onclick: () => decidir('/api/gestor/aprovar', { id: p.id }, 'Validado. Só as folgas de ' + p.nome + ' mudaram.') }, 'Validar'),
-      h('button', { class: 'perigo', onclick: () => decidir('/api/gestor/recusar', { id: p.id }, 'Pedido recusado.') }, 'Recusar')));
-}
-
-function gPedidos(g) {
-  const pend = g.pedidos.filter(p => p.status === 'pendente');
-  const resto = g.pedidos.filter(p => p.status !== 'pendente').slice(0, 8);
-  return h('div', {},
-    pend.length ? h('div', { class: 'alerta', role: 'alert' }, h('h2', { class: 'neg' }, '⚠ ' + pend.length + ' pedido(s) urgente(s) aguardando você'), pend.map(p => cartaoPedido(g, p)))
-      : h('div', { class: 'card' }, h('h2', {}, 'Sem pedidos urgentes'), h('p', { class: 'sutil' }, 'Quando alguém pedir mudança urgente, o alerta aparece aqui para você validar ou recusar.')),
-    resto.length ? h('div', { class: 'card' }, h('h3', {}, 'Últimas decisões'), h('ul', { class: 'limpa' }, resto.map(p => h('li', {},
-      h('b', {}, p.nome), ' • semana de ' + dataBR(p.semana) + ' • ' + parTxt(p.antigo) + ' → ' + parTxt(p.novo) + ' • ',
-      h('span', { class: 'badge ' + (p.status === 'aprovada' ? 'ok' : p.status === 'cancelada' ? '' : 'bad') }, { aprovada: 'validado', cancelada: 'cancelado pelo funcionário' }[p.status] || 'recusado'))))) : null);
-}
-
-// O gestor pode escolher quaisquer 2 dias de folga para um colaborador (não precisam ser seguidos). A lei é conferida pelo sistema.
 function modalFolgas(g, x) {
   const dias = [];
   for (let d = 0; d < 7; d++) dias.push({ dia: d, data: somaDias(g.semana, d), folga: x.par[0] === d || x.par[1] === d });
   const msg = h('div');
   const salvar = h('button', { class: 'cheio', disabled: true }, 'Salvar folgas');
-  const { dias: grade, sel, aoMudar } = seletorDeDias(dias, g.hoje, []);
+  const { dias: grade, sel, aoMudar } = seletorDeDias(dias, g.hoje, [x.par[0], x.par[1]]);
   aoMudar.push(s => { salvar.disabled = s.size !== 2 || (x.par[0] === [...s].sort((p, q) => p - q)[0] && x.par[1] === [...s].sort((p, q) => p - q)[1]); });
   aoMudar.forEach(f => f(sel));
   const jaPassaram = dias.filter(d => d.folga && d.data < g.hoje).length === 2;
@@ -333,46 +269,58 @@ function modalFolgas(g, x) {
   };
   salvar.addEventListener('click', () => enviar(null));
   abrirModal(h('h2', { class: 'neon-sm' }, 'Alterar folgas de ' + x.nome),
-    h('p', { class: 'sutil' }, 'Semana de ' + dataBR(g.semana) + '. Folgas atuais: ' + parTxt(x.par) + '. Toque nos 2 dias da nova folga (não precisam ser seguidos).'), grade,
+    h('p', { class: 'sutil' }, 'Semana de ' + dataBR(g.semana) + '. Folgas atuais: ' + parTxt(x.par) + '. Toque na folga que sai e no dia que entra.'), grade,
     jaPassaram ? h('div', { class: 'msg' }, 'As duas folgas desta semana já passaram, então não há o que mudar aqui. Escolha a "Próxima semana" na lista.') : null,
     h('p', { class: 'sutil pequeno' }, 'O sistema recusa qualquer mudança que quebre o descanso semanal ou a folga de domingo exigida em lei.'), msg,
     h('div', { class: 'acoes' }, salvar, h('button', { onclick: fecharModal }, 'Cancelar')));
 }
 
-function gEscala(g) {
-  const sel = h('select', { onchange: e => { semanaGestor = e.target.value; painelGestor(); } },
-    g.semanas.map((s, i) => h('option', { value: s, selected: s === g.semana }, 'Semana de ' + dataBR(s) + ' a ' + dataBR(somaDias(s, 6)) + ' (' + g.rotulos[i] + ')')));
-  const cab = h('tr', {}, h('th', {}, 'Colaborador'), DIAS.map((d, i) => h('th', {}, d, h('br'), h('small', { class: 'sutil' }, dataBR(somaDias(g.semana, i))), g.feriados[i] ? h('br') : null, g.feriados[i] ? h('small', { class: 'badge warn' }, 'feriado') : null)), h('th', {}, ''));
-  const linhas = [];
-  g.ordem.forEach(f => {
-    const membros = g.grade.filter(x => x.funcao === f);
-    if (!membros.length) return;
-    linhas.push(h('tr', {}, h('td', { colspan: '9', class: 'neon-sm' }, g.funcoesInfo[f].icone + ' ' + g.funcoesInfo[f].plural)));
-    membros.forEach(x => linhas.push(h('tr', {}, h('td', {}, x.nome),
-      DIAS.map((_, d) => { const off = x.par[0] === d || x.par[1] === d; return h('td', { class: (off ? 'f' : 'w') + (x.alterada ? ' alt' : '') }, off ? 'folga' : 'trabalho'); }),
-      h('td', {}, g.podeAlterar ? h('button', { class: 'pq', onclick: () => modalFolgas(g, x) }, 'Alterar') : null))));
-    const mn = g.minimos[f], cb = g.cobertura[f];
-    linhas.push(h('tr', {}, h('td', { class: 'sutil' }, 'Trabalhando / mínimo'), DIAS.map((_, d) => h('td', { class: cb[d] < mn[d] ? 'def' : 'sutil' }, cb[d] + '/' + mn[d])), h('td', {})));
+// ---------- escala do mês (tabela com todos e todos os dias; imprime em uma folha)
+async function gEscalaMes(nav, g) {
+  let m;
+  try { m = await api('/api/gestor/mes' + (mesGestor ? '?mes=' + mesGestor : '')); } catch (e) { toast(e.msg, true); return; }
+  mesGestor = m.mes;
+  const nomeMes = MESES[+m.mes.slice(5, 7) - 1] + ' de ' + m.mes.slice(0, 4);
+  const titulo = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+  const i = m.meses.indexOf(m.mes);
+  const navMes = h('div', { class: 'nav-mes nao-imprime' },
+    h('button', { class: 'pq', disabled: i <= 0, 'aria-label': 'Mês anterior', onclick: () => { mesGestor = m.meses[i - 1]; painelGestor(); } }, '‹'),
+    h('h3', {}, titulo),
+    h('button', { class: 'pq', disabled: i >= m.meses.length - 1, 'aria-label': 'Próximo mês', onclick: () => { mesGestor = m.meses[i + 1]; painelGestor(); } }, '›'));
+  const editar = (l, d) => {
+    const w = somaDias(d.data, -d.dia);
+    if (!m.editaveis.includes(w)) { toast('Só dá para alterar a semana atual e a próxima.', true); return; }
+    if (!l.pares[w]) return;
+    modalFolgas({ semana: w, hoje: m.hoje }, { id: l.id, nome: l.nome, par: l.pares[w] });
+  };
+  const cab = h('tr', {}, h('th', { class: 'col-nome' }, 'Colaborador'),
+    m.dias.map(d => h('th', { class: 'col-dia' + (d.dia === 0 ? ' dom' : '') + (d.hoje ? ' hoje' : '') + (d.feriado ? ' fer' : ''), title: d.feriado || '' },
+      h('b', {}, String(+d.data.slice(8))), h('small', {}, DIAS[d.dia].slice(0, 1)), d.feriado ? h('i', {}, 'fer') : null)),
+    h('th', {}, 'Folgas'));
+  const corpo = [];
+  m.ordem.forEach(f => {
+    const ls = m.linhas.filter(l => l.funcao === f);
+    if (!ls.length) return;
+    corpo.push(h('tr', { class: 'grupo' }, h('td', { colspan: String(m.dias.length + 2) }, m.funcoesInfo[f].icone + ' ' + m.funcoesInfo[f].plural)));
+    ls.forEach(l => corpo.push(h('tr', {}, h('td', { class: 'col-nome' }, l.nome),
+      m.dias.map((d, k) => {
+        const prev = d.data >= m.previsao, off = l.folgas[k];
+        return h('td', { class: 'cel' + (off ? ' off' : '') + (prev ? ' prev' : '') + (d.hoje ? ' hoje' : '') + (d.dia === 0 ? ' dom' : ''), onclick: () => editar(l, d), title: (off ? 'Folga' : 'Trabalho') + ' • ' + DIAS_L[d.dia] + ' ' + dataBR(d.data) }, off ? 'F' : '');
+      }),
+      h('td', { class: 'tot' }, String(l.total)))));
+    corpo.push(h('tr', { class: 'cob' }, h('td', { class: 'col-nome' }, 'Trabalhando / mínimo'),
+      m.dias.map((d, k) => { const t = m.trabalhando[f][k], mi = m.minimos[f][k]; return h('td', { class: t < mi ? 'def' : '' }, t + '/' + mi); }), h('td')));
   });
-  return h('div', { class: 'card' }, h('h2', {}, 'Escala completa'), sel,
-    g.previsao ? h('div', { class: 'msg' }, 'Previsão: esta semana ainda não está fechada. Ela é calculada a partir da escala atual, seguindo a lei, e pode mudar. Para alterar folgas, use a semana atual ou a próxima.') : null,
-    !g.podeAlterar && !g.previsao ? h('div', { class: 'msg' }, 'Semana que já passou: só para consulta.') : null,
-    h('div', { class: 'legenda' }, h('span', {}, h('i', { class: 'leg-folga' }), 'Folga'), h('span', {}, h('i', { class: 'leg-trab' }), 'Trabalho')),
-    g.ajustada ? h('p', { class: 'badge warn' }, 'Esta semana teve ajuste') : null,
-    g.deficits.length ? h('div', { class: 'msg erro' }, h('b', { class: 'def' }, 'Furo: ' + g.deficits.length + ' ponto(s) abaixo da cobertura mínima nesta semana. '),
-      g.podeAlterar ? h('button', { class: 'pq', onclick: () => sugerirCobertura(g) }, 'Sugerir como cobrir') : null) : null,
-    linhas.length ? h('div', { class: 'tabela-rolagem' }, h('table', {}, h('thead', {}, cab), h('tbody', {}, linhas))) : h('p', { class: 'sutil' }, 'Nenhum colaborador cadastrado ainda. Use a aba Equipe.'));
-}
-
-async function sugerirCobertura(g) {
-  try {
-    const pl = await api('/api/gestor/previa', { semana: g.semana, cobrir: true });
-    abrirModal(h('h2', { class: 'neon-sm' }, 'Cobrir o furo da semana de ' + dataBR(g.semana)),
-      pl.sugestoes.length ? blocoPlano(pl, '') : h('p', {}, 'Não achei quem possa trocar a folga sem quebrar a lei. Ajuste manualmente com o botão Alterar.'),
-      h('div', { class: 'acoes' },
-        pl.sugestoes.length ? h('button', { class: 'cheio', onclick: async () => { try { await api('/api/gestor/remanejar', { semana: g.semana, remanejo: remanejoDe(pl) }); fecharModal(); toast('Remanejamento aplicado.'); painelGestor(); } catch (e) { toast(e.msg, true); } } }, 'Aprovar estas trocas') : null,
-        h('button', { onclick: fecharModal }, 'Cancelar')));
-  } catch (e) { toast(e.msg, true); }
+  const card = h('div', { class: 'card escala-mes' },
+    h('div', { class: 'so-imprime cab-impressao' }, h('img', { src: 'logo.png', alt: '' }), h('div', {}, h('b', {}, 'Escala de folgas • ' + titulo), h('small', {}, 'F = folga. Gerada em ' + dataBR(m.hoje) + '/' + m.hoje.slice(0, 4) + '.'))),
+    h('div', { class: 'topo-escala nao-imprime' }, h('h2', {}, 'Escala do mês'),
+      h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => window.print() }, 'Imprimir ou salvar PDF'))),
+    navMes,
+    h('div', { class: 'legenda nao-imprime' }, h('span', {}, h('i', { class: 'leg-folga' }), 'F = folga'), h('span', {}, h('i', { class: 'leg-trab' }), 'Trabalho'),
+      h('span', {}, h('i', { class: 'leg-prev' }), 'Previsão (pode mudar)'), h('span', {}, h('i', { class: 'leg-hoje' }), 'Hoje')),
+    h('p', { class: 'sutil pequeno nao-imprime' }, 'Toque num dia da semana atual ou da próxima para mudar as folgas daquela pessoa. O sistema não deixa quebrar a lei nem deixar furo.'),
+    h('div', { class: 'tabela-rolagem' }, h('table', { class: 'tmes' }, h('thead', {}, cab), h('tbody', {}, corpo))));
+  app.replaceChildren(nav, card);
 }
 
 function gEquipe(g) {

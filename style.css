@@ -126,3 +126,53 @@ body.entrada main{max-width:none;padding:0 16px}
 @media (max-width:640px){.cal-dia.tem-fer::after{display:block}}
 td.w{color:#c9d3cf;background:rgba(255,255,255,.03);font-size:.8rem}
 
+/* ---- escala do mês */
+.topo-escala{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.topo-escala .acoes{margin-top:0}
+.tmes{border-collapse:separate;border-spacing:0;font-size:.82rem}
+.tmes th,.tmes td{padding:0;border-bottom:1px solid var(--borda2);text-align:center}
+.tmes .col-nome{position:sticky;left:0;background:var(--card);z-index:1;text-align:left;padding:6px 10px 6px 4px;white-space:nowrap;min-width:150px}
+.tmes th.col-dia{min-width:28px;padding:4px 0;font-weight:600}
+.tmes th.col-dia b{display:block;font-size:.85rem}
+.tmes th.col-dia small{display:block;color:var(--mut);font-size:.68rem;font-weight:400}
+.tmes th.col-dia i{display:block;font-style:normal;font-size:.6rem;color:var(--aviso)}
+.tmes th.dom,.tmes td.dom{background:rgba(255,255,255,.035)}
+.tmes th.hoje{color:var(--aviso)}
+.tmes td.cel{height:30px;cursor:pointer;color:var(--acc);font-weight:800;border-left:1px solid var(--borda2)}
+.tmes td.cel:hover{background:rgba(90,210,170,.12)}
+.tmes td.cel.off{background:rgba(90,210,170,.2)}
+.tmes td.cel.prev{background-image:repeating-linear-gradient(135deg,transparent 0 5px,rgba(255,255,255,.035) 5px 10px)}
+.tmes td.cel.prev.off{background-color:rgba(90,210,170,.1)}
+.tmes td.cel.hoje{box-shadow:inset 0 0 0 2px var(--aviso)}
+.tmes td.tot{font-weight:700;padding:0 8px}
+.tmes tr.grupo td{text-align:left;padding:10px 4px 4px;color:var(--acc);font-weight:700;border-bottom:0;position:sticky;left:0}
+.tmes tr.cob td{font-size:.68rem;color:var(--mut);height:24px}
+.tmes tr.cob td.def{color:var(--erro);font-weight:700}
+.leg-prev{background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.18) 3px 6px);border:1px dashed var(--borda)}
+.leg-hoje{border:2px solid var(--aviso)}
+.so-imprime{display:none}
+/* ---- impressão: só a escala, em paisagem, fundo branco */
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  body{background:#fff!important;color:#000}
+  .topo,.abas,.nao-imprime,#toast,.modal{display:none!important}
+  main{max-width:none;padding:0}
+  .card{border:0;box-shadow:none;background:#fff;padding:0;margin:0}
+  .so-imprime{display:flex}
+  .cab-impressao{align-items:center;gap:12px;margin-bottom:6px}
+  .cab-impressao img{height:42px;border-radius:6px}
+  .cab-impressao b{display:block;font-size:14pt;color:#000}
+  .cab-impressao small{color:#444}
+  .tabela-rolagem{overflow:visible}
+  .tmes{font-size:7.5pt;width:100%}
+  .tmes .col-nome{background:#fff;min-width:0;padding:2px 4px;color:#000}
+  .tmes th.col-dia{min-width:0}
+  .tmes th.col-dia small,.tmes tr.cob td{color:#555}
+  .tmes td.cel{height:16px;color:#000;border-left:1px solid #ccc}
+  .tmes td.cel.off{background:#cdeee2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tmes th,.tmes td{border-bottom:1px solid #ccc}
+  .tmes tr.grupo td{color:#000;padding-top:6px}
+  .tmes th.dom,.tmes td.dom{background:#f2f2f2!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tmes td.cel.prev{background-image:none}
+  .tmes td.cel.hoje{box-shadow:none}
+}
