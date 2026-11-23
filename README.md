@@ -85,7 +85,7 @@ Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou
 - **Entrada rápida:** botões "Entrar rápido" na tela de entrada (só contas de exemplo).
 - **Escala:** a frase "Hoje" mostra quem trabalha e se falta gente. Toque num dia: **Trabalha**, **Folga neste dia**, **Faltou** (pergunta se trouxe atestado), **Veio trabalhar (extra)**. "Mudar horário" só aparece quando precisa.
 - **Mais opções** (embaixo da escala): mostrar horários, resumo do mês, baixar planilha e salvar uma cópia.
-- **Equipe:** cadastrar, editar e remover.
+- **Equipe:** as pessoas aparecem separadas por equipe. "+ Equipe" cria uma equipe nova (nome, cargo e ícone); "Editar equipe" renomeia ou apaga; ↑ ↓ mudam a ordem. "+ Funcionário" cadastra. Abrindo uma pessoa, "Também é gestor" deixa ela na escala e com acesso às telas de gestor.
 - **Mais:** pessoas por dia, feriados, conferir a lei, cópia de segurança e histórico, empresa.
 - **O sistema não deixa:** folga que quebra a lei (o dia aparece riscado) nem ficar faltando gente sem você confirmar quem cobre.
 

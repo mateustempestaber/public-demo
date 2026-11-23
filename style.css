@@ -284,3 +284,23 @@ button.link:hover{background:none}
 .botoes-dia p{grid-column:1/-1;margin:0}
 .grade3 small{display:block;color:var(--mut);margin-bottom:2px}
 #modalBox textarea{margin-top:12px}
+/* ---- equipes editáveis ---- */
+.topo-equipe{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px}
+.topo-equipe h2{margin:0}
+.bloco-equipe{padding-top:14px}
+.cab-equipe{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--borda2);padding-bottom:8px;margin-bottom:6px}
+.cab-equipe h3{margin:0;font-size:1.1rem}
+.cab-equipe small{display:block}
+.lista-pessoas li{border-bottom:1px solid var(--borda2)}
+.lista-pessoas li:last-child{border-bottom:0}
+button.pessoa{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:10px 6px;color:var(--txt)}
+button.pessoa:hover{background:var(--sup)}
+button.pessoa i{font-style:normal;color:var(--acc);font-size:1.3rem}
+button.pessoa .badge{margin-left:8px}
+.icones{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}
+.icone{width:44px;height:44px;font-size:1.3rem;padding:0;border-radius:10px;border:1px solid var(--borda);background:var(--sup)}
+.icone.sel{border-color:var(--lima);background:var(--lima)}
+.caixa-gestor{align-items:flex-start!important;background:var(--sup);border:1px solid var(--borda2);border-radius:10px;padding:10px 12px;margin:14px 0 6px!important}
+.caixa-gestor span{display:flex;flex-direction:column;gap:2px}
+.caixa-gestor small{color:var(--mut)}
+.hoje-frase .minhas{color:var(--acc)}

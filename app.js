@@ -13,6 +13,7 @@ let mesFunc = 0; // 0 = mês atual, 1 = próximo mês
 let verHorarios = false;
 let verResumo = false;
 let MARCA = null;
+let EU = null; // quem está logado (id, nome, papel)
 
 // Tudo é montado com textContent (nunca innerHTML com dados), então nome/motivo digitados não executam código.
 function h(tag, attrs, ...filhos) {
@@ -109,7 +110,7 @@ function barraUsuario(nome, papel) {
 
 // ---------- entrada: só nome completo + CPF. O sistema descobre sozinho se a pessoa é gestor ou funcionário.
 function telaEntrada() {
-  abaGestor = 'escala'; mesGestor = ''; mesFunc = 0; verHorarios = false; verResumo = false; // quem entrar começa sempre pela escala
+  EU = null; abaGestor = 'escala'; mesGestor = ''; mesFunc = 0; verHorarios = false; verResumo = false; // quem entrar começa sempre pela escala
   fecharModal();
   usuario.replaceChildren();
   document.body.classList.add('entrada');
@@ -216,6 +217,7 @@ async function painelGestor() {
   let g;
   try { g = await api('/api/gestor/painel'); } catch (e) { return; }
   const eu = await api('/api/eu').catch(() => ({ nome: 'Gestor' }));
+  EU = eu;
   barraUsuario(eu.nome || 'Gestor', 'gestor');
   const naMais = abaGestor === 'mais' || MAIS.some(([k]) => k === abaGestor);
   const abas = [['escala', 'Escala'], ['equipe', 'Equipe'], ['mais', 'Mais']];
@@ -280,6 +282,7 @@ async function gEscalaMes(nav) {
   });
   // resumo de hoje, em uma frase
   const kh = m.dias.findIndex(d => d.hoje);
+  const minhaLinha = EU ? m.linhas.find(l => l.id === EU.id) : null; // gestor que também está na escala
   let frase = null;
   if (kh >= 0) {
     const trab = m.ordem.reduce((t, f) => t + m.trabalhando[f][kh], 0);
@@ -288,7 +291,8 @@ async function gEscalaMes(nav) {
     const faltaGente = m.ordem.filter(f => m.trabalhando[f][kh] < m.minimos[f][kh]).map(f => m.funcoesInfo[f].plural);
     frase = h('div', { class: 'hoje-frase nao-imprime' + (faltaGente.length ? ' ruim' : '') },
       h('b', {}, 'Hoje: '), trab + ' trabalhando, ' + folga + ' de folga' + (faltas ? ', ' + faltas + (faltas === 1 ? ' falta' : ' faltas') : '') + '. ',
-      faltaGente.length ? h('b', {}, 'Falta gente: ' + faltaGente.join(', ') + '.') : 'Tudo certo.');
+      faltaGente.length ? h('b', {}, 'Falta gente: ' + faltaGente.join(', ') + '.') : 'Tudo certo.',
+      minhaLinha && minhaLinha.pares[somaDias(m.hoje, -m.dias[kh].dia)] ? h('span', { class: 'minhas' }, ' Suas folgas nesta semana: ' + parTxt(minhaLinha.pares[somaDias(m.hoje, -m.dias[kh].dia)]) + '.') : null);
   }
   const opcoes = h('details', { class: 'mais-opcoes nao-imprime' }, h('summary', {}, 'Mais opções'),
     h('div', { class: 'acoes' },
@@ -491,53 +495,98 @@ const campoHora = (valor, rot) => h('input', { type: 'time', value: valor || '',
 const campoInt = valor => h('input', { type: 'number', min: '0', max: '480', step: '5', placeholder: 'min', value: valor != null ? String(valor) : '', 'aria-label': 'Intervalo em minutos' });
 const intDe = x => x.value === '' ? null : Math.max(0, parseInt(x.value, 10) || 0);
 const horarioTxt = f => f.hEnt ? f.hEnt + '–' + f.hSai + (f.hInt != null ? ' (int. ' + f.hInt + ' min)' : '') : '—';
+// Equipe: as pessoas aparecem separadas por equipe. Dá para criar, renomear, mudar a ordem e apagar equipes.
 function gEquipe(g) {
-  const nome = h('input', { placeholder: 'Nome completo' });
-  const cpf = h('input', { inputmode: 'numeric', maxlength: '14', placeholder: '000.000.000-00', autocomplete: 'off' });
-  const fn = h('select', {}, g.ordem.map(f => h('option', { value: f }, g.funcoesInfo[f].nome)));
-  const dom = h('select', {}, h('option', { value: '3' }, 'Homem'), h('option', { value: '2' }, 'Mulher'));
-  const ent = campoHora('15:00', 'Entrada'), sai = campoHora('00:00', 'Saída'), intv = campoInt(60);
-  const msg = h('div');
-  const cadastrar = async () => {
-    try {
-      const r = await api('/api/gestor/funcionarios', { nome: nome.value, cpf: cpf.value, funcao: fn.value, domingoSemanas: Number(dom.value), hEnt: ent.value, hSai: sai.value, hInt: ent.value ? intDe(intv) : null });
-      await painelGestor(); toast(r.nome + ' cadastrado.');
-    } catch (e) { msg.replaceChildren(erroBox(e)); }
+  const qtd = id => g.equipe.filter(f => f.funcao === id).length;
+  const mandar = async (url, corpo, okMsg, depois) => {
+    try { await api(url, corpo); fecharModal(); toast(okMsg); if (depois) depois(); painelGestor(); return true; }
+    catch (e) { toast(e.msg, true); return false; }
   };
-  const remover = f => confirmar('Remover ' + f.nome + '?', 'Ele sai da escala e não consegue mais entrar no sistema.', 'Remover',
-    async () => { try { await api('/api/gestor/funcionarios/remover', { id: f.id }); toast('Removido.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
-  const revogar = f => confirmar('Desconectar ' + f.nome + ' dos aparelhos?', 'Ele sai do sistema em todos os celulares e computadores. Pode entrar de novo com nome e CPF.', 'Desconectar',
-    async () => { try { await api('/api/gestor/funcionarios/acesso', { id: f.id }); toast('Desconectado.'); } catch (e) { toast(e.msg, true); } }, true);
-  const editar = f => {
-    const n = h('input', { value: f.nome, maxlength: '60' });
-    const fu = h('select', {}, g.ordem.map(x => h('option', { value: x, selected: x === f.funcao }, g.funcoesInfo[x].nome)));
-    const dm = h('select', {}, h('option', { value: '3', selected: f.domingoSemanas === 3 }, 'Homem'), h('option', { value: '2', selected: f.domingoSemanas === 2 }, 'Mulher'));
-    const e1 = campoHora(f.hEnt, 'Entrada'), s1 = campoHora(f.hSai, 'Saída'), i1 = campoInt(f.hInt);
-    const m2 = h('div');
-    abrirModal(h('h2', { class: 'neon-sm' }, 'Editar ' + f.nome),
-      h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Nome completo'), n), h('div', {}, h('label', {}, 'Função'), fu),
-        h('div', {}, h('label', {}, 'Sexo (regra da folga no domingo)'), dm), h('div', {}, h('label', {}, 'Horário normal (entrada, saída, intervalo em min)'), h('div', { class: 'grade3' }, e1, s1, i1))), m2,
-      h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: async () => {
-        try { await api('/api/gestor/funcionarios/editar', { id: f.id, nome: n.value, funcao: fu.value, domingoSemanas: Number(dm.value), hEnt: e1.value, hSai: s1.value, hInt: e1.value ? intDe(i1) : null }); fecharModal(); toast('Dados salvos.'); painelGestor(); }
-        catch (e) { m2.replaceChildren(erroBox(e)); }
-      } }, 'Salvar'), h('button', { onclick: fecharModal }, 'Cancelar')),
-      h('button', { class: 'pq link', onclick: () => { fecharModal(); revogar(f); } }, 'Desconectar dos aparelhos'));
+  // ---- criar ou editar uma equipe
+  const modalEquipe = q => {
+    const nome = h('input', { value: q ? q.plural : '', maxlength: '30', placeholder: 'Ex.: Salão, Cozinha, Delivery', 'aria-label': 'Nome da equipe' });
+    const cargo = h('input', { value: q ? q.nome : '', maxlength: '40', placeholder: 'Ex.: Garçom (opcional)', 'aria-label': 'Cargo' });
+    let icone = q ? q.icone : g.icones[0];
+    const icones = h('div', { class: 'icones' });
+    const pintar = () => por(icones, g.icones.map(i => h('button', { type: 'button', class: 'icone' + (i === icone ? ' sel' : ''), 'aria-label': 'Ícone ' + i, onclick: () => { icone = i; pintar(); } }, i)));
+    pintar();
+    const msg = h('div');
+    const salvar = async () => {
+      try { await api('/api/gestor/equipes', { acao: q ? 'editar' : 'criar', id: q ? q.id : '', nome: nome.value, cargo: cargo.value, icone }); fecharModal(); toast(q ? 'Equipe salva.' : 'Equipe criada. Ajuste quantas pessoas ela precisa por dia em Mais › Pessoas por dia.'); painelGestor(); }
+      catch (e) { por(msg, erroBox(e)); }
+    };
+    const apagar = q ? () => confirmar('Apagar a equipe ' + q.plural + '?', 'Ela some da escala. Só dá para apagar equipe sem ninguém.', 'Apagar',
+      () => mandar('/api/gestor/equipes', { acao: 'apagar', id: q.id }, 'Equipe apagada.'), true) : null;
+    abrirModal(h('h2', { class: 'neon-sm' }, q ? 'Editar equipe' : 'Nova equipe'),
+      h('label', {}, 'Nome da equipe'), nome, h('label', {}, 'Cargo de quem trabalha nela'), cargo, h('label', {}, 'Ícone'), icones, msg,
+      h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: salvar }, 'Salvar'), h('button', { onclick: fecharModal }, 'Cancelar'),
+        q ? h('button', { class: 'perigo', disabled: qtd(q.id) > 0, title: qtd(q.id) ? 'Mude as pessoas de equipe antes de apagar.' : '', onclick: apagar }, 'Apagar equipe') : null),
+      q && qtd(q.id) ? h('p', { class: 'sutil pequeno' }, 'Para apagar, mude antes as ' + qtd(q.id) + ' pessoa(s) desta equipe para outra.') : null);
   };
+  // ---- cadastrar ou editar uma pessoa
+  const modalPessoa = (f, equipeInicial) => {
+    const nome = h('input', { value: f ? f.nome : '', maxlength: '60', placeholder: 'Nome completo', 'aria-label': 'Nome completo' });
+    const cpf = h('input', { inputmode: 'numeric', maxlength: '14', placeholder: '000.000.000-00', autocomplete: 'off', 'aria-label': 'CPF' });
+    const eq = h('select', { 'aria-label': 'Equipe' }, g.equipes.map(q => h('option', { value: q.id, selected: q.id === (f ? f.funcao : equipeInicial) }, q.icone + ' ' + q.plural)));
+    const dom = h('select', { 'aria-label': 'Sexo' }, h('option', { value: '3', selected: !f || f.domingoSemanas === 3 }, 'Homem'), h('option', { value: '2', selected: f && f.domingoSemanas === 2 }, 'Mulher'));
+    const ent = campoHora(f ? f.hEnt : '15:00', 'Entrada'), sai = campoHora(f ? f.hSai : '00:00', 'Saída'), intv = campoInt(f ? f.hInt : 60);
+    const gest = h('input', { type: 'checkbox', checked: f ? f.gestor : false });
+    const souEu = f && EU && EU.id === f.id;
+    if (souEu) gest.disabled = true;
+    const msg = h('div');
+    const salvar = async () => {
+      const corpo = { nome: nome.value, funcao: eq.value, domingoSemanas: Number(dom.value), hEnt: ent.value, hSai: sai.value, hInt: ent.value ? intDe(intv) : null, gestor: gest.checked };
+      try {
+        if (f) await api('/api/gestor/funcionarios/editar', Object.assign({ id: f.id }, corpo));
+        else await api('/api/gestor/funcionarios', Object.assign({ cpf: cpf.value }, corpo));
+        fecharModal(); toast(f ? 'Salvo.' : nome.value.trim() + ' cadastrado. Ele entra com o nome completo e o CPF.'); painelGestor();
+      } catch (e) { por(msg, erroBox(e)); }
+    };
+    const remover = () => confirmar('Remover ' + f.nome + '?', 'Ele sai da escala e não consegue mais entrar no sistema.', 'Remover',
+      () => mandar('/api/gestor/funcionarios/remover', { id: f.id }, 'Removido.'), true);
+    const desconectar = () => confirmar('Desconectar ' + f.nome + ' dos aparelhos?', 'Ele sai do sistema em todos os celulares e computadores. Pode entrar de novo com nome e CPF.', 'Desconectar',
+      () => mandar('/api/gestor/funcionarios/acesso', { id: f.id }, 'Desconectado.'), true);
+    abrirModal(h('h2', { class: 'neon-sm' }, f ? f.nome : 'Novo funcionário'),
+      h('div', { class: 'grade2' },
+        h('div', {}, h('label', {}, 'Nome completo'), nome),
+        f ? h('div', {}, h('label', {}, 'CPF'), h('p', { class: 'sutil' }, f.cpf + ' (para mudar, remova e cadastre de novo)')) : h('div', {}, h('label', {}, 'CPF (ele entra com o CPF)'), cpf),
+        h('div', {}, h('label', {}, 'Equipe'), eq),
+        h('div', {}, h('label', {}, 'Sexo (regra da folga no domingo)'), dom),
+        h('div', {}, h('label', {}, 'Horário normal (entrada, saída, intervalo em min)'), h('div', { class: 'grade3' }, ent, sai, intv))),
+      h('label', { class: 'check caixa-gestor' }, gest, h('span', {}, h('b', {}, 'Também é gestor'), h('small', {}, 'Continua na escala e também pode mexer na escala, na equipe e nas outras telas de gestor.'))),
+      souEu ? h('p', { class: 'sutil pequeno' }, 'Você não pode tirar o seu próprio acesso de gestor.') : null,
+      msg,
+      h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: salvar }, f ? 'Salvar' : 'Cadastrar'), h('button', { onclick: fecharModal }, 'Cancelar'),
+        f && !souEu ? h('button', { class: 'perigo', onclick: remover }, 'Remover') : null),
+      f ? h('button', { class: 'pq link', onclick: desconectar }, 'Desconectar dos aparelhos') : null);
+  };
+  const mover = (q, acao) => mandar('/api/gestor/equipes', { acao, id: q.id }, 'Ordem salva.');
+  const removerGestor = x => confirmar('Remover o gestor ' + x.nome + '?', 'Ele não consegue mais entrar no sistema.', 'Remover',
+    () => mandar('/api/gestor/gestores/remover', { id: x.id }, 'Gestor removido.'), true);
   const temDemo = g.equipe.some(f => f.demo);
   const removerDemo = () => confirmar('Apagar a equipe de exemplo?', 'Apaga as pessoas de exemplo. As que você cadastrou ficam.', 'Apagar',
     async () => { try { const r = await api('/api/gestor/demo/remover', {}); toast(r.removidos + ' removido(s).'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true);
   return h('div', {},
-    h('div', { class: 'card' }, h('h2', {}, 'Equipe (' + g.equipe.length + ')'),
-      h('div', { class: 'tabela-rolagem' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['Nome', 'Função', 'Horário', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, g.equipe.map(f => h('tr', {}, h('td', {}, f.nome), h('td', {}, g.funcoesInfo[f.funcao].nome), h('td', {}, f.hEnt ? f.hEnt + '–' + f.hSai : '—'),
-          h('td', { class: 'acoes-linha' }, h('button', { class: 'pq', onclick: () => editar(f) }, 'Editar'), h('button', { class: 'perigo pq', onclick: () => remover(f) }, 'Remover'))))))),
-      temDemo ? h('p', { class: 'sutil pequeno' }, 'Esta é uma equipe de exemplo. ', h('button', { class: 'pq link', onclick: removerDemo }, 'Apagar equipe de exemplo')) : null),
-    h('details', { class: 'card cadastro' }, h('summary', {}, '+ Cadastrar funcionário'),
-      h('div', { class: 'grade2' }, h('div', {}, h('label', {}, 'Nome completo'), nome), h('div', {}, h('label', {}, 'CPF (ele entra com o CPF)'), cpf), h('div', {}, h('label', {}, 'Função'), fn),
-        h('div', {}, h('label', {}, 'Sexo (regra da folga no domingo)'), dom), h('div', {}, h('label', {}, 'Horário normal (entrada, saída, intervalo em min)'), h('div', { class: 'grade3' }, ent, sai, intv))),
-      msg, h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: cadastrar }, 'Cadastrar')))
-  );
+    h('div', { class: 'card topo-equipe' }, h('h2', {}, 'Equipe (' + g.equipe.length + ' pessoas)'),
+      h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => modalPessoa(null, g.equipes[0] && g.equipes[0].id) }, '+ Funcionário'), h('button', { onclick: () => modalEquipe(null) }, '+ Equipe'))),
+    g.equipes.map((q, i) => h('div', { class: 'card bloco-equipe' },
+      h('div', { class: 'cab-equipe' },
+        h('div', {}, h('h3', {}, q.icone + ' ' + q.plural + ' ', h('span', { class: 'sutil' }, '(' + qtd(q.id) + ')')), q.nome !== q.plural ? h('small', { class: 'sutil' }, q.nome) : null),
+        h('div', { class: 'acoes-linha' },
+          h('button', { class: 'pq', disabled: i === 0, 'aria-label': 'Subir ' + q.plural, title: 'Subir', onclick: () => mover(q, 'subir') }, '↑'),
+          h('button', { class: 'pq', disabled: i === g.equipes.length - 1, 'aria-label': 'Descer ' + q.plural, title: 'Descer', onclick: () => mover(q, 'descer') }, '↓'),
+          h('button', { class: 'pq', onclick: () => modalEquipe(q) }, 'Editar equipe'))),
+      qtd(q.id) ? h('ul', { class: 'limpa lista-pessoas' }, g.equipe.filter(f => f.funcao === q.id).map(f =>
+        h('li', {}, h('button', { class: 'pessoa', onclick: () => modalPessoa(f) },
+          h('span', {}, f.nome, f.gestor ? h('span', { class: 'badge ok' }, 'gestor') : null),
+          h('small', { class: 'sutil' }, f.hEnt ? f.hEnt + '–' + f.hSai : ''), h('i', { 'aria-hidden': 'true' }, '›')))))
+        : h('p', { class: 'sutil pequeno' }, 'Ninguém nesta equipe ainda.'),
+      h('button', { class: 'pq link', onclick: () => modalPessoa(null, q.id) }, '+ Adicionar em ' + q.plural))),
+    g.gestores.length ? h('div', { class: 'card' }, h('h3', {}, 'Gestores que não entram na escala'),
+      h('ul', { class: 'limpa lista-fer' }, g.gestores.map(x => h('li', {}, h('span', {}, x.nome, EU && EU.id === x.id ? h('span', { class: 'sutil pequeno' }, ' (você)') : null),
+        EU && EU.id === x.id ? null : h('button', { class: 'pq perigo', onclick: () => removerGestor(x) }, 'Remover')))),
+      h('p', { class: 'sutil pequeno' }, 'Para ter um gestor que também trabalha, abra a pessoa e marque "Também é gestor".')) : null,
+    temDemo ? h('p', { class: 'sutil pequeno' }, 'Esta é uma equipe de exemplo. ', h('button', { class: 'pq link', onclick: removerDemo }, 'Apagar equipe de exemplo')) : null);
 }
 
 function gCobertura(g) {
