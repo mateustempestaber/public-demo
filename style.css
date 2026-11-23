@@ -304,3 +304,19 @@ button.pessoa .badge{margin-left:8px}
 .caixa-gestor span{display:flex;flex-direction:column;gap:2px}
 .caixa-gestor small{color:var(--mut)}
 .hoje-frase .minhas{color:var(--acc)}
+/* ---- montar o mês e rascunho ---- */
+.tmes th.clicavel{cursor:pointer}
+.tmes th.clicavel:hover b{color:var(--acc);text-decoration:underline}
+.modo-escala{display:inline-flex;border:1px solid var(--borda);border-radius:999px;padding:3px;margin-bottom:10px;background:var(--sup)}
+.modo-escala button{border:0;border-radius:999px;padding:7px 16px;background:none;color:var(--mut)}
+.modo-escala button.sel{background:var(--lima);color:var(--lima-esc);font-weight:700}
+.banner-rascunho{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;border:2px dashed var(--aviso);background:rgba(255,193,92,.08);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.banner-rascunho small{display:block;color:var(--mut);margin-top:2px}
+.escala-mes.rascunho .tmes thead th{background:rgba(255,193,92,.12)}
+.escala-mes.rascunho{border-color:var(--aviso)}
+.opcoes-montar{display:grid;gap:10px;margin:12px 0}
+.opcao-montar{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:14px 16px;border-radius:12px;border:1px solid var(--borda);background:var(--sup);color:var(--txt)}
+.opcao-montar:hover{border-color:var(--lima)}
+.opcao-montar b{font-size:1.05rem;color:var(--acc)}
+.opcao-montar span{color:var(--txt)}
+.opcao-montar small{color:var(--aviso)}

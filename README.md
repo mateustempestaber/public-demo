@@ -84,6 +84,9 @@ Digite **nome completo + CPF**. O sistema descobre sozinho se você é gestor ou
 
 - **Entrada rápida:** botões "Entrar rápido" na tela de entrada (só contas de exemplo).
 - **Escala:** a frase "Hoje" mostra quem trabalha e se falta gente. Toque num dia: **Trabalha**, **Folga neste dia**, **Faltou** (pergunta se trouxe atestado), **Veio trabalhar (extra)**. "Mudar horário" só aparece quando precisa.
+- **Montar o mês:** monta o mês inteiro sozinho (com a folga fixa de cada um). Pode ser **rascunho** (mês fictício: os funcionários não veem; depois "Publicar como mês real" ou "Descartar") ou **mês real**. Depois de montado, dá para trocar folgas, marcar extras, faltas e feriados em todas as semanas do mês.
+- **Feriado:** toque no número do dia, no topo da tabela.
+- **Folga fixa:** em Equipe, abra a pessoa e toque em até 2 dias.
 - **Mais opções** (embaixo da escala): mostrar horários, resumo do mês, baixar planilha e salvar uma cópia.
 - **Equipe:** as pessoas aparecem separadas por equipe. "+ Equipe" cria uma equipe nova (nome, cargo e ícone); "Editar equipe" renomeia ou apaga; ↑ ↓ mudam a ordem. "+ Funcionário" cadastra. Abrindo uma pessoa, "Também é gestor" deixa ela na escala e com acesso às telas de gestor.
 - **Mais:** pessoas por dia, feriados, conferir a lei, cópia de segurança e histórico, empresa.

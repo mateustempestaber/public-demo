@@ -12,6 +12,9 @@ let mesGestor = '';
 let mesFunc = 0; // 0 = mês atual, 1 = próximo mês
 let verHorarios = false;
 let verResumo = false;
+let verRascunho = false; // vendo o mês fictício (rascunho)
+// rq: as telas do gestor mandam ?rascunho=1 quando estão no rascunho
+const rq = url => verRascunho ? url + (url.includes('?') ? '&' : '?') + 'rascunho=1' : url;
 let MARCA = null;
 let EU = null; // quem está logado (id, nome, papel)
 
@@ -110,7 +113,7 @@ function barraUsuario(nome, papel) {
 
 // ---------- entrada: só nome completo + CPF. O sistema descobre sozinho se a pessoa é gestor ou funcionário.
 function telaEntrada() {
-  EU = null; abaGestor = 'escala'; mesGestor = ''; mesFunc = 0; verHorarios = false; verResumo = false; // quem entrar começa sempre pela escala
+  EU = null; verRascunho = false; abaGestor = 'escala'; mesGestor = ''; mesFunc = 0; verHorarios = false; verResumo = false; // quem entrar começa sempre pela escala
   fecharModal();
   usuario.replaceChildren();
   document.body.classList.add('entrada');
@@ -202,6 +205,7 @@ async function painelFuncionario() {
       p.semanas.map(sem => h('div', { class: 'linha-semana' },
         h('div', {}, h('b', {}, sem.rotulo), h('span', { class: 'sutil' }, ' (' + dataBR(sem.inicio) + ' a ' + dataBR(sem.fim) + ')')),
         h('b', { class: 'neon-sm' }, parTxt(sem.par)))),
+      p.folgaFixa && p.folgaFixa.length ? h('div', { class: 'linha-semana' }, h('b', {}, 'Sua folga fixa'), h('b', { class: 'neon-sm' }, p.folgaFixa.map(x => DIAS_L[x]).join(' e '))) : null,
       p.horario ? h('div', { class: 'linha-semana' }, h('b', {}, 'Seu horário'), h('b', { class: 'neon-sm' }, p.horario)) : null,
       h('p', { class: 'sutil pequeno' }, 'Precisa mudar uma folga? Fale com o gestor.')));
 }
@@ -246,7 +250,9 @@ const remanejoDe = pl => (pl && pl.sugestoes ? pl.sugestoes : []).map(s => ({ id
 // ---------- escala do mês (tabela com todos e todos os dias; imprime em uma folha)
 async function gEscalaMes(nav) {
   let m;
-  try { m = await api('/api/gestor/mes' + (mesGestor ? '?mes=' + mesGestor : '')); } catch (e) { toast(e.msg, true); return; }
+  if (verRascunho && mesGestor === '') verRascunho = false;
+  try { m = await api(rq('/api/gestor/mes' + (mesGestor ? '?mes=' + mesGestor : ''))); } catch (e) { toast(e.msg, true); return; }
+  if (verRascunho && !m.vendoRascunho) verRascunho = false;
   mesGestor = m.mes;
   const titulo = nomeDoMes(m.mes);
   const i = m.meses.indexOf(m.mes);
@@ -255,7 +261,8 @@ async function gEscalaMes(nav) {
     h('h3', {}, titulo),
     h('button', { class: 'pq', disabled: i >= m.meses.length - 1, 'aria-label': 'Próximo mês', onclick: () => { mesGestor = m.meses[i + 1]; painelGestor(); } }, '›'));
   const cab = h('tr', {}, h('th', { class: 'col-nome' }, 'Colaborador'),
-    m.dias.map(d => h('th', { class: 'col-dia' + (d.dia === 0 ? ' dom' : '') + (d.hoje ? ' hoje' : '') + (d.feriado ? ' fer' : ''), title: d.feriado || '' },
+    m.dias.map(d => h('th', { class: 'col-dia clicavel' + (d.dia === 0 ? ' dom' : '') + (d.hoje ? ' hoje' : '') + (d.feriado ? ' fer' : ''), title: (d.feriado ? d.feriado + ' • ' : '') + 'Toque para marcar ou tirar feriado',
+      tabindex: '0', role: 'button', onclick: () => modalFeriado(d, m), onkeydown: ev => { if (ev.key === 'Enter') modalFeriado(d, m); } },
       h('b', {}, String(+d.data.slice(8))), h('small', {}, DIAS[d.dia].slice(0, 1)), d.feriado ? h('i', {}, 'fer') : null)),
     h('th', {}, 'Folgas'));
   const corpo = [];
@@ -301,10 +308,24 @@ async function gEscalaMes(nav) {
       h('button', { onclick: () => baixarEscala(m, titulo) }, 'Baixar planilha (Excel)'),
       h('button', { onclick: modalSalvarVersao }, 'Salvar uma cópia da escala')));
   if (verHorarios || verResumo) opcoes.open = true;
-  const card = h('div', { class: 'card escala-mes' + (verHorarios ? ' com-horas' : '') },
+  const card = h('div', { class: 'card escala-mes' + (verHorarios ? ' com-horas' : '') + (verRascunho ? ' rascunho' : '') },
     h('div', { class: 'so-imprime cab-impressao' }, h('img', { src: logoSrc(), alt: '' }),
       h('div', {}, h('b', {}, 'Escala de folgas • ' + titulo), h('small', {}, (MARCA ? MARCA.nome + ' • ' : '') + 'F = folga, FJ = falta justificada, FI = falta, EX = dia extra, TR = trabalhou no feriado. Gerada em ' + dataBRc(m.hoje) + '. Não substitui o controle de ponto.'))),
-    h('div', { class: 'topo-escala nao-imprime' }, navMes, h('button', { class: 'cheio', onclick: () => window.print() }, 'Imprimir')),
+    m.rascunho ? h('div', { class: 'modo-escala nao-imprime', role: 'tablist' },
+      h('button', { class: !verRascunho ? 'sel' : '', role: 'tab', onclick: () => { verRascunho = false; painelGestor(); } }, 'Escala real'),
+      h('button', { class: verRascunho ? 'sel' : '', role: 'tab', onclick: () => { verRascunho = true; mesGestor = m.rascunho.mes; painelGestor(); } }, '📝 Rascunho de ' + m.rascunho.nome.split(' ')[0])) : null,
+    verRascunho ? h('div', { class: 'banner-rascunho nao-imprime' },
+      h('div', {}, h('b', {}, '📝 Rascunho de ' + m.rascunho.nome + ' (mês fictício).'), ' Os funcionários não veem. Mexa à vontade.',
+        h('small', {}, 'Montado por ' + m.rascunho.por + ' em ' + m.rascunho.em + '.')),
+      h('div', { class: 'acoes' },
+        h('button', { class: 'cheio', onclick: () => confirmar('Publicar o rascunho?', 'O rascunho de ' + m.rascunho.nome + ' vira a escala real e os funcionários passam a ver. O que já passou não muda.', 'Publicar',
+          async () => { try { await api('/api/gestor/rascunho', { acao: 'publicar' }); verRascunho = false; toast('Rascunho publicado. Agora é a escala real.'); painelGestor(); } catch (e) { toast(e.msg, true); } }) }, 'Publicar como mês real'),
+        h('button', { class: 'perigo', onclick: () => confirmar('Descartar o rascunho?', 'Tudo o que você fez no rascunho será apagado. A escala real não muda.', 'Descartar',
+          async () => { try { await api('/api/gestor/rascunho', { acao: 'descartar' }); verRascunho = false; toast('Rascunho descartado.'); painelGestor(); } catch (e) { toast(e.msg, true); } }, true) }, 'Descartar'))) : null,
+    h('div', { class: 'topo-escala nao-imprime' }, navMes, h('div', { class: 'acoes' },
+      h('button', { onclick: () => modalMontar(m) }, 'Montar o mês'),
+      h('button', { class: 'cheio', onclick: () => window.print() }, 'Imprimir'))),
+    !m.montado && !verRascunho ? h('p', { class: 'sutil pequeno nao-imprime' }, 'A partir de ' + dataBR(m.previsao) + ' a escala ainda é previsão (riscada). Toque em "Montar o mês" para fechar o mês e poder mexer nessas semanas.') : null,
     frase,
     m.furos ? h('div', { class: 'msg erro nao-imprime' }, 'Falta gente em ' + m.furos + (m.furos === 1 ? ' dia' : ' dias') + ' deste mês (números em vermelho).') : null,
     h('div', { class: 'legenda nao-imprime' },
@@ -329,6 +350,50 @@ function baixarEscala(m, titulo) {
   linhas.push([], ['T = trabalho, F = folga, FJ = falta justificada, FI = falta, EX = dia extra, TR = trabalhou no feriado']);
   baixarArquivo('escala-' + m.mes + '.csv', csv(linhas), 'text/csv;charset=utf-8');
   toast('Planilha baixada.');
+}
+
+// ---------- montar o mês: rascunho (fictício) ou real
+function modalMontar(m) {
+  const nome = nomeDoMes(m.mes);
+  const montar = async (modo, refazer) => {
+    try {
+      await api('/api/gestor/montar', { mes: m.mes, modo, refazer: !!refazer });
+      fecharModal();
+      if (modo === 'rascunho') { verRascunho = true; toast('Rascunho de ' + nome + ' montado. Os funcionários não veem.'); }
+      else { verRascunho = false; toast(nome + ' montado. Agora dá para mexer em todas as semanas do mês.'); }
+      mesGestor = m.mes; painelGestor();
+    } catch (e) { toast(e.msg, true); }
+  };
+  const opcao = (titulo, texto, acao, extra) => h('button', { class: 'opcao-montar', onclick: acao }, h('b', {}, titulo), h('span', {}, texto), extra ? h('small', {}, extra) : null);
+  abrirModal(h('h2', { class: 'neon-sm' }, 'Montar ' + nome),
+    h('p', { class: 'sutil' }, 'O sistema monta todas as semanas sozinho, usando a folga fixa de cada um, as regras da lei e as pessoas por dia. Depois você ajusta o que precisar.'),
+    h('div', { class: 'opcoes-montar' },
+      opcao('📝 Montar rascunho (mês fictício)', 'Os funcionários não veem. Você testa à vontade e depois publica ou descarta.', () => montar('rascunho'),
+        m.rascunho ? 'Substitui o rascunho de ' + m.rascunho.nome + ' que já existe.' : null),
+      m.montado
+        ? opcao('🔄 Montar de novo (mês real)', 'Refaz as semanas de ' + nome + ' que ainda não começaram. Os funcionários veem na hora.', () => confirmar('Montar ' + nome + ' de novo?',
+            'As trocas de folga feitas à mão nas semanas que ainda não começaram serão refeitas. Faltas, extras e feriados ficam.', 'Montar de novo', () => montar('real', true), true),
+            'Dica: salve uma cópia da escala antes (Mais opções).')
+        : opcao('✅ Montar mês real', 'Vale na hora: os funcionários veem. Depois você marca extras, trocas, faltas e feriados.', () => montar('real'))),
+    h('div', { class: 'acoes' }, h('button', { onclick: fecharModal }, 'Cancelar')));
+}
+
+// ---------- feriado num dia (toque no número do dia, no topo da tabela)
+function modalFeriado(d, m) {
+  const nome = h('input', { value: d.feriado || '', maxlength: '50', placeholder: 'Ex.: Aniversário de Araraquara', 'aria-label': 'Nome do feriado' });
+  const msg = h('div');
+  const salvar = async remover => {
+    try {
+      await api(rq('/api/gestor/feriados'), remover ? { data: d.data, remover: true } : { data: d.data, nome: nome.value });
+      fecharModal(); toast(remover ? 'Feriado tirado.' : 'Feriado marcado.'); painelGestor();
+    } catch (e) { por(msg, erroBox(e)); }
+  };
+  abrirModal(h('h2', { class: 'neon-sm' }, (d.feriado ? 'Feriado em ' : 'Marcar feriado em ') + DIAS_L[d.dia].toLowerCase() + ', ' + dataBR(d.data)),
+    verRascunho ? h('p', { class: 'sutil pequeno' }, 'Só no rascunho (os funcionários não veem até você publicar).') : null,
+    h('label', {}, 'Nome do feriado'), nome, msg,
+    h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => salvar(false) }, 'Salvar'),
+      d.feriado ? h('button', { class: 'perigo', onclick: () => salvar(true) }, 'Tirar feriado') : null,
+      h('button', { onclick: fecharModal }, 'Cancelar')));
 }
 
 function modalSalvarVersao() {
@@ -370,7 +435,7 @@ function modalDia(l, k, m) {
   if (!c.t) { toast('Esta pessoa ainda não tem escala nesse dia.', true); return; }
   const w = somaDias(d.data, -d.dia), par = l.pares[w];
   const podeTrocar = m.editaveis.includes(w) && d.data >= m.hoje && !!par;
-  const motivoTroca = d.data < m.hoje ? 'Esse dia já passou.' : 'Só dá para mudar folga nesta semana e na próxima.';
+  const motivoTroca = d.data < m.hoje ? 'Esse dia já passou.' : 'Esta semana ainda não foi montada. Use "Montar o mês".';
   const base = (c.t === 'F' || c.t === 'EX') ? 'F' : 'T';
   const trabalha = t => t === 'T' || t === 'EX' || t === 'TR';
   // "faltou" é um botão só; depois pergunta se trouxe atestado (FJ) ou não (FI)
@@ -416,7 +481,7 @@ function modalDia(l, k, m) {
     // trocar a folga de dia
     if (tipo !== base && (tipo === 'F' || tipo === 'T')) {
       const alvos = base === 'T' ? par.filter(x => somaDias(w, x) >= m.hoje) : [0, 1, 2, 3, 4, 5, 6].filter(x => !par.includes(x) && somaDias(w, x) >= m.hoje);
-      if (!leis) api('/api/gestor/opcoes?id=' + l.id + '&semana=' + w).then(o => { leis = o; desenhar(); }).catch(e => { leis = []; por(msg, erroBox(e)); });
+      if (!leis) api(rq('/api/gestor/opcoes?id=' + l.id + '&semana=' + w)).then(o => { leis = o; desenhar(); }).catch(e => { leis = []; por(msg, erroBox(e)); });
       const parNovo = x => (base === 'T' ? [d.dia, par.find(y => y !== x)] : [x, par.find(y => y !== d.dia)]).sort((p, q) => p - q);
       const motivoLei = x => { const n = parNovo(x), o = (leis || []).find(o => o.par[0] === n[0] && o.par[1] === n[1]); return o && !o.ok ? o.motivo.replace(/^A lei não deixa: /, '') : null; };
       if (destino != null && motivoLei(destino)) destino = null;
@@ -451,10 +516,10 @@ function modalDia(l, k, m) {
       if (troca) {
         const novo = base === 'T' ? [d.dia, par.find(x => x !== destino)] : [destino, par.find(x => x !== d.dia)];
         const [a, b] = novo.sort((p, q) => p - q);
-        try { await api('/api/gestor/folgas', { id: l.id, semana: w, a, b, remanejo: remanejo || [] }); }
+        try { await api(rq('/api/gestor/folgas'), { id: l.id, semana: w, a, b, remanejo: remanejo || [] }); }
         catch (e) {
           if (e.codigo === 'cobertura' && !remanejo) { // ficaria faltando gente: mostra quem pode cobrir e pede confirmação
-            const pl = await api('/api/gestor/previa', { id: l.id, semana: w, a, b }).catch(() => null);
+            const pl = await api(rq('/api/gestor/previa'), { id: l.id, semana: w, a, b }).catch(() => null);
             if (pl) {
               por(msg, blocoPlano(pl, 'Vai faltar gente:'),
                 pl.resolve ? h('div', { class: 'acoes' }, h('button', { class: 'cheio', onclick: () => gravar(corpo, remanejoDe(pl), true) }, 'Confirmar e salvar')) : null);
@@ -464,7 +529,7 @@ function modalDia(l, k, m) {
           throw e;
         }
       }
-      const r = await api('/api/gestor/dia', corpo);
+      const r = await api(rq('/api/gestor/dia'), corpo);
       fecharModal();
       const av = r.avisos || [];
       toast(av.length ? 'Salvo. Atenção: ' + av.join(' ') : 'Salvo.', av.length > 0);
@@ -484,7 +549,8 @@ function modalDia(l, k, m) {
     () => gravar({ id: l.id, data: d.data, s: '' }, null, false), true);
   desenhar();
   abrirModal(h('h2', { class: 'neon-sm' }, l.nome),
-    h('p', { class: 'sutil' }, DIAS_L[d.dia] + ', ' + dataBR(d.data) + (d.feriado ? ' • feriado: ' + d.feriado : '') + '. Folgas da semana: ' + parTxt(par) + '.'),
+    h('p', { class: 'sutil' }, DIAS_L[d.dia] + ', ' + dataBR(d.data) + (d.feriado ? ' • feriado: ' + d.feriado : '') + '. Folgas da semana: ' + parTxt(par) + '.' +
+      (l.fixa && l.fixa.length ? ' Folga fixa: ' + l.fixa.map(x => DIAS_L[x].toLowerCase()).join(' e ') + '.' : '') + (verRascunho ? ' (rascunho)' : '')),
     grandes, area, obs, avisos, msg,
     h('div', { class: 'acoes' }, salvar, h('button', { onclick: fecharModal }, 'Cancelar'), temAlgo ? h('button', { class: 'perigo', onclick: desfazer }, 'Desfazer') : null),
     c.por ? h('p', { class: 'sutil pequeno' }, 'Mudado por ' + c.por + ' em ' + c.em + '.') : null);
@@ -531,15 +597,21 @@ function gEquipe(g) {
     const dom = h('select', { 'aria-label': 'Sexo' }, h('option', { value: '3', selected: !f || f.domingoSemanas === 3 }, 'Homem'), h('option', { value: '2', selected: f && f.domingoSemanas === 2 }, 'Mulher'));
     const ent = campoHora(f ? f.hEnt : '15:00', 'Entrada'), sai = campoHora(f ? f.hSai : '00:00', 'Saída'), intv = campoInt(f ? f.hInt : 60);
     const gest = h('input', { type: 'checkbox', checked: f ? f.gestor : false });
+    let fixa = f && f.folgaFixa ? f.folgaFixa.slice() : [];
+    const chipsFixa = h('div', { class: 'chips' });
+    const pintarFixa = () => por(chipsFixa, DIAS.map((nm, i) => h('button', { type: 'button', class: 'chip-dia' + (fixa.includes(i) ? ' sel' : ''), 'aria-pressed': fixa.includes(i) ? 'true' : 'false',
+      onclick: () => { if (fixa.includes(i)) fixa = fixa.filter(x => x !== i); else if (fixa.length < 2) fixa.push(i); else { toast('No máximo 2 dias de folga fixa.', true); return; } pintarFixa(); } }, nm)));
+    pintarFixa();
     const souEu = f && EU && EU.id === f.id;
     if (souEu) gest.disabled = true;
     const msg = h('div');
     const salvar = async () => {
-      const corpo = { nome: nome.value, funcao: eq.value, domingoSemanas: Number(dom.value), hEnt: ent.value, hSai: sai.value, hInt: ent.value ? intDe(intv) : null, gestor: gest.checked };
+      const corpo = { nome: nome.value, funcao: eq.value, domingoSemanas: Number(dom.value), hEnt: ent.value, hSai: sai.value, hInt: ent.value ? intDe(intv) : null, gestor: gest.checked, folgaFixa: fixa };
       try {
-        if (f) await api('/api/gestor/funcionarios/editar', Object.assign({ id: f.id }, corpo));
-        else await api('/api/gestor/funcionarios', Object.assign({ cpf: cpf.value }, corpo));
-        fecharModal(); toast(f ? 'Salvo.' : nome.value.trim() + ' cadastrado. Ele entra com o nome completo e o CPF.'); painelGestor();
+        const r = f ? await api('/api/gestor/funcionarios/editar', Object.assign({ id: f.id }, corpo))
+          : await api('/api/gestor/funcionarios', Object.assign({ cpf: cpf.value }, corpo));
+        const av = r.avisos || [];
+        fecharModal(); toast((f ? 'Salvo.' : nome.value.trim() + ' cadastrado. Ele entra com o nome completo e o CPF.') + (av.length ? ' ' + av.join(' ') : ''), av.length > 0); painelGestor();
       } catch (e) { por(msg, erroBox(e)); }
     };
     const remover = () => confirmar('Remover ' + f.nome + '?', 'Ele sai da escala e não consegue mais entrar no sistema.', 'Remover',
@@ -553,6 +625,8 @@ function gEquipe(g) {
         h('div', {}, h('label', {}, 'Equipe'), eq),
         h('div', {}, h('label', {}, 'Sexo (regra da folga no domingo)'), dom),
         h('div', {}, h('label', {}, 'Horário normal (entrada, saída, intervalo em min)'), h('div', { class: 'grade3' }, ent, sai, intv))),
+      h('label', {}, 'Folga fixa (toque em até 2 dias)'), chipsFixa,
+      h('p', { class: 'sutil pequeno' }, 'Sem dia marcado, o sistema escolhe. Na semana em que a lei manda folgar no domingo, uma das folgas vai para o domingo.'),
       h('label', { class: 'check caixa-gestor' }, gest, h('span', {}, h('b', {}, 'Também é gestor'), h('small', {}, 'Continua na escala e também pode mexer na escala, na equipe e nas outras telas de gestor.'))),
       souEu ? h('p', { class: 'sutil pequeno' }, 'Você não pode tirar o seu próprio acesso de gestor.') : null,
       msg,
@@ -579,7 +653,7 @@ function gEquipe(g) {
       qtd(q.id) ? h('ul', { class: 'limpa lista-pessoas' }, g.equipe.filter(f => f.funcao === q.id).map(f =>
         h('li', {}, h('button', { class: 'pessoa', onclick: () => modalPessoa(f) },
           h('span', {}, f.nome, f.gestor ? h('span', { class: 'badge ok' }, 'gestor') : null),
-          h('small', { class: 'sutil' }, f.hEnt ? f.hEnt + '–' + f.hSai : ''), h('i', { 'aria-hidden': 'true' }, '›')))))
+          h('small', { class: 'sutil' }, [f.folgaFixa && f.folgaFixa.length ? 'folga fixa: ' + f.folgaFixa.map(x => DIAS[x].toLowerCase()).join(' e ') : '', f.hEnt ? f.hEnt + '–' + f.hSai : ''].filter(Boolean).join(' • ')), h('i', { 'aria-hidden': 'true' }, '›')))))
         : h('p', { class: 'sutil pequeno' }, 'Ninguém nesta equipe ainda.'),
       h('button', { class: 'pq link', onclick: () => modalPessoa(null, q.id) }, '+ Adicionar em ' + q.plural))),
     g.gestores.length ? h('div', { class: 'card' }, h('h3', {}, 'Gestores que não entram na escala'),
