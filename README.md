@@ -3,6 +3,16 @@
 Versão de teste do sistema de folgas 5x2. **Este repositório tem só o programa compilado** (sem código-fonte).
 Todos os nomes e CPFs são **fictícios**. Não cadastre dados reais de ninguém.
 
+## Baixar e rodar no seu computador (o jeito mais fácil)
+
+Vá em **[Releases](https://github.com/mateustempestaber/public-demo/releases/latest)** e baixe o pacote do seu sistema:
+
+- **Windows:** `QuintalEscala-Windows.zip` → descompacte → dois cliques em `iniciar-windows.bat`
+- **Mac:** `QuintalEscala-Mac.zip` → descompacte → no Terminal, dentro da pasta: `sh iniciar-linux-mac.sh`
+- **Linux:** `QuintalEscala-Linux.tar.gz` → descompacte → `sh iniciar-linux-mac.sh`
+
+Abre em http://localhost:8787. Deixe a janela preta aberta enquanto usa.
+
 ## Opção 1 — direto no navegador (sem instalar nada)
 
 Abra: **https://mateustempestaber.github.io/public-demo/**
